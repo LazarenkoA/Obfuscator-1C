@@ -1,1 +1,2 @@
 
+![](doc/logo.png)
