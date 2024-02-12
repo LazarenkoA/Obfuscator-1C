@@ -79,8 +79,6 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 
 	c.a.ModuleStatement.Walk(c.walkStep)
 
-	fmt.Println(c.a.Print(ast.PrintConf{Margin: 4}))
-
 	result := c.a.Print(ast.PrintConf{OneLine: true})
 	// result = strings.ToLower(result) // нельзя так делать, все поломает
 	return result, nil
