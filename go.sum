@@ -1,3 +1,5 @@
+github.com/LazarenkoA/1c-language-parser v0.0.0-20240212142604-3ada07b345b9 h1:zYKWzTwvzS7PiR2qX/+BRk+hQ7f4OUlW/nHrfKSJymE=
+github.com/LazarenkoA/1c-language-parser v0.0.0-20240212142604-3ada07b345b9/go.mod h1:6iWBDF6rR8HmZsetpgNXi/Qq0MlRzhvhg8FmAl2gXt4=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/knetic/govaluate v3.0.0+incompatible h1:wtCEE87YYq68awKAV9kYkNDvxS7MDzO3ABbKgDqO+tI=

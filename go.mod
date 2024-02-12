@@ -5,7 +5,7 @@ go 1.21.4
 //replace github.com/LazarenkoA/1c-language-parser => C:\GoProject\1C-YACC\
 
 require (
-	github.com/LazarenkoA/1c-language-parser v0.0.0-20240204123725-05172231fcdf
+	github.com/LazarenkoA/1c-language-parser v0.0.0-20240212142604-3ada07b345b9
 	github.com/knetic/govaluate v3.0.0+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.4
