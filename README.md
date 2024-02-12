@@ -16,9 +16,9 @@ func main() {
 
 	code := `.....`
 
-	obf := obfuscator.NewObfuscatory(context.Background(), Config{RepExpByTernary: true,
+	obf := obfuscator.NewObfuscatory(context.Background(), obfuscator.Config{RepExpByTernary: true,
 		RepLoopByGoto:    true,
-		RepExpByEval:   true,
+		RepExpByEval:     true,
 		HideString:       true,
 		ChangeConditions: true,
 		AppendGarbage:    true,
