@@ -1,8 +1,8 @@
-module github.com/LazarenkoA/Code-Cloak-BSL
+module github.com/LazarenkoA/Obfuscator-1C
 
 go 1.21.4
 
-replace github.com/LazarenkoA/1c-language-parser => C:\GoProject\1C-YACC\
+//replace github.com/LazarenkoA/1c-language-parser => C:\GoProject\1C-YACC\
 
 require (
 	github.com/LazarenkoA/1c-language-parser v0.0.0-20240204123725-05172231fcdf
