@@ -42,11 +42,10 @@ func TestObfuscate(t *testing.T) {
 	obf := NewObfuscatory(context.Background(), Config{
 		RepExpByTernary:  true,
 		RepLoopByGoto:    true,
-		RepExpByInvoke:   true,
+		RepExpByEval:     true,
 		HideString:       true,
 		ChangeConditions: true,
 		AppendGarbage:    true,
-		// ShuffleExpressions: true,
 	})
 	obCode, err := obf.Obfuscate(code)
 	if err != nil {

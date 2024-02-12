@@ -19,7 +19,7 @@ func main() {
 
 	obf := obfuscator.NewObfuscatory(context.Background(), Config{RepExpByTernary: true,
 		RepLoopByGoto:    true,
-		RepExpByInvoke:   true,
+		RepExpByEval:   true,
 		HideString:       true,
 		ChangeConditions: true,
 		AppendGarbage:    true,

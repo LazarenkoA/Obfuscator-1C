@@ -21,8 +21,8 @@ type Config struct {
 	// RepLoopByGoto заменять циклы на Перейти
 	RepLoopByGoto bool
 
-	// RepExpByInvoke прятать выражения в Выполнить() Вычислить()
-	RepExpByInvoke bool
+	// RepExpByEval прятать выражения в Выполнить() Вычислить()
+	RepExpByEval bool
 
 	// HideString прятать строки
 	HideString bool
@@ -153,7 +153,7 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 			return
 		}
 
-		if _, ok := v.Left.(ast.VarStatement); ok && c.conf.RepExpByInvoke {
+		if _, ok := v.Left.(ast.VarStatement); ok && c.conf.RepExpByEval {
 			switch v.Right.(type) {
 			case ast.MethodStatement, ast.CallChainStatement, ast.NewObjectStatement:
 				str := c.a.PrintStatement(v.Right, ast.PrintConf{})
