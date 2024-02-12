@@ -9,8 +9,7 @@ package main
 import (
 	"context"
 	"fmt"
-
-	"github.com/LazarenkoA/Code-Cloak-BSL/obfuscator"
+        "github.com/LazarenkoA/Obfuscator-1C"
 )
 
 func main() {
