@@ -36,6 +36,7 @@ func main() {
 
 
 ```
+этот пример на [play.golang.com](https://play.golang.com/p/ExvKLHnTA9L)
 
 #### Примеры обфускации
 Исходный код
