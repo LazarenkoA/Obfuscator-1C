@@ -8,8 +8,8 @@ package main
 
 import (
 	"context"
-	"fmt"
-        "github.com/LazarenkoA/Obfuscator-1C"
+	"fmt" 
+        "github.com/LazarenkoA/Obfuscator-1C/obfuscator"
 )
 
 func main() {
