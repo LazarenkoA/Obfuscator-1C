@@ -364,7 +364,7 @@ func (c *Obfuscator) randomString(lenStr int) (result string) {
 
 func (c *Obfuscator) obfuscateString(str string, key int32) string {
 	var decrypted []rune
-	for _, c := range str {
+	for _, c := range strings.ReplaceAll(str, "|", " ") {
 		decrypted = append(decrypted, c^key)
 		// if unicode.IsLetter(c) {
 		// 	decrypted = append(decrypted, c^key)
@@ -612,7 +612,7 @@ func (c *Obfuscator) loopToGoto(loop *ast.LoopStatement) []ast.Statement {
 		newBody := []ast.Statement{
 			start,
 			&ast.IfStatement{
-				Expression: loop.WhileExpr.(*ast.ExpStatement).Not(),
+				Expression: loop.WhileExpr.(ast.INot).Not(),
 				TrueBlock:  []ast.Statement{ast.GoToStatement{Label: end}},
 			},
 		}
