@@ -8,13 +8,14 @@ package main
 
 import (
 	"context"
-	"fmt" 
-        "github.com/LazarenkoA/Obfuscator-1C/obfuscator"
+	"fmt"
+
+	"github.com/LazarenkoA/Obfuscator-1C/obfuscator"
 )
 
 func main() {
 
-	code := `.....`
+	code := `...`
 
 	obf := obfuscator.NewObfuscatory(context.Background(), obfuscator.Config{RepExpByTernary: true,
 		RepLoopByGoto:    true,
@@ -32,6 +33,7 @@ func main() {
 
 	fmt.Println(obCode)
 }
+
 
 ```
 
