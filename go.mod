@@ -2,10 +2,10 @@ module github.com/LazarenkoA/Code-Cloak-BSL
 
 go 1.21.4
 
-replace github.com/LazarenkoA/1c-language-parser => C:\GoProject\1C-YACC\
+//replace github.com/LazarenkoA/1c-language-parser => C:\GoProject\1C-YACC\
 
 require (
-	github.com/LazarenkoA/1c-language-parser v0.0.0-20240204123725-05172231fcdf
+	github.com/LazarenkoA/1c-language-parser v0.0.0-20240213181635-a3dfcd1ecb91
 	github.com/knetic/govaluate v3.0.0+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.4
@@ -13,6 +13,7 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
