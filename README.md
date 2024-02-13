@@ -10,16 +10,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/LazarenkoA/Code-Cloak-BSL/obfuscator"
+	"github.com/LazarenkoA/Obfuscator-1C/obfuscator"
 )
 
 func main() {
 
-	code := `.....`
+	code := `...`
 
-	obf := obfuscator.NewObfuscatory(context.Background(), Config{RepExpByTernary: true,
+	obf := obfuscator.NewObfuscatory(context.Background(), obfuscator.Config{RepExpByTernary: true,
 		RepLoopByGoto:    true,
-		RepExpByEval:   true,
+		RepExpByEval:     true,
 		HideString:       true,
 		ChangeConditions: true,
 		AppendGarbage:    true,
@@ -34,7 +34,9 @@ func main() {
 	fmt.Println(obCode)
 }
 
+
 ```
+этот пример на [play.golang.com](https://play.golang.com/p/ExvKLHnTA9L)
 
 #### Примеры обфускации
 Исходный код

@@ -1,4 +1,4 @@
-module github.com/LazarenkoA/Code-Cloak-BSL
+module github.com/LazarenkoA/Obfuscator-1C
 
 go 1.21.4
 
