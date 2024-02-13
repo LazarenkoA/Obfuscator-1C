@@ -114,7 +114,7 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 			if str, ok := param.(string); ok {
 				v.Param[i] = ast.MethodStatement{
 					Name:  c.decodeStringFunc(current.Directive),
-					Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4, false)},
+					Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
 				}
 			}
 		}
@@ -122,7 +122,7 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 		if str, ok := v.Param.(string); ok && c.conf.HideString {
 			v.Param = ast.MethodStatement{
 				Name:  c.decodeStringFunc(current.Directive),
-				Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4, false)},
+				Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
 			}
 		}
 	case *ast.ExpStatement:
@@ -140,11 +140,11 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 					Name: "Вычислить",
 					Param: []ast.Statement{ast.MethodStatement{
 						Name:  c.decodeStringFunc(current.Directive),
-						Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4, false)},
+						Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
 					}},
 				}
 			default:
-				v.Right = c.hideValue(v.Right, 4, false)
+				v.Right = c.hideValue(v.Right, 4)
 			}
 		}
 	case ast.CallChainStatement:
@@ -162,11 +162,15 @@ func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, p
 	case *ast.ExpStatement:
 		c.obfuscateExpStatement(currentPF, &r.Right)
 		c.obfuscateExpStatement(currentPF, &r.Left)
+
+		if c.conf.RepExpByTernary {
+			r.Right = c.hideValue(r.Right, 4)
+		}
 	case string:
 		if c.conf.HideString {
 			*part = ast.MethodStatement{
 				Name:  c.decodeStringFunc(currentPF.Directive),
-				Param: []ast.Statement{c.obfuscateString(r, int32(key)), c.hideValue(key, 4, false)},
+				Param: []ast.Statement{c.obfuscateString(r, int32(key)), c.hideValue(key, 4)},
 			}
 		}
 		return
@@ -174,7 +178,7 @@ func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, p
 		if str, ok := r.Param.(string); ok && c.conf.HideString {
 			r.Param = ast.MethodStatement{
 				Name:  c.decodeStringFunc(currentPF.Directive),
-				Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4, false)},
+				Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
 			}
 		}
 	case ast.IParams:
@@ -182,7 +186,7 @@ func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, p
 			if str, ok := param.(string); ok && c.conf.HideString {
 				r.Params()[i] = ast.MethodStatement{
 					Name:  c.decodeStringFunc(currentPF.Directive),
-					Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4, false)},
+					Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
 				}
 			}
 		}
@@ -200,11 +204,7 @@ func (c *Obfuscator) decodeStringFunc(directive string) string {
 	}
 }
 
-func (c *Obfuscator) hideValue(val interface{}, complexity int, force bool) ast.Statement {
-	if !c.conf.RepExpByTernary && !force {
-		return val
-	}
-
+func (c *Obfuscator) hideValue(val interface{}, complexity int) ast.Statement {
 	switch val.(type) {
 	case string, bool, float64, int, time.Time, *ast.ExpStatement, ast.MethodStatement:
 		return c.newTernary(val, c.rand.Intn(complexity-2)+2, c.rand.Intn(complexity-1))
@@ -222,14 +222,14 @@ func (c *Obfuscator) appendGarbage(body *[]ast.Statement) {
 		*body = append(*body, &ast.ExpStatement{
 			Operation: ast.OpEq,
 			Left:      ast.VarStatement{Name: c.randomString(20)},
-			Right:     c.hideValue(c.randomString(5), 4, true),
+			Right:     c.hideValue(c.randomString(5), 4),
 		})
 	}
 	if c.rand.Intn(2) == 1 {
 		*body = append(*body, &ast.ExpStatement{
 			Operation: ast.OpEq,
 			Left:      ast.VarStatement{Name: c.randomString(10)},
-			Right:     c.hideValue(float64(c.rand.Intn(200)-100), 5, true),
+			Right:     c.hideValue(float64(c.rand.Intn(200)-100), 5),
 		})
 	}
 	if c.rand.Intn(2) == 1 {
@@ -365,9 +365,47 @@ func (c *Obfuscator) fakeValue(value interface{}) interface{} {
 		return c.randomString(10)
 	case *ast.ExpStatement:
 		return c.convStrExpToExpStatement(<-c.falseCondition)
+	case ast.MethodStatement:
+		return c.fakeMethods()
 	default:
 		return value
 	}
+}
+
+func (c *Obfuscator) fakeMethods() ast.MethodStatement {
+	// массив платформенных методов (важно что б они были доступны на клиенте и на сервере)
+	pool := []ast.MethodStatement{
+		{
+			Name:  "XMLСтрока",
+			Param: []ast.Statement{float64(c.rand.Intn(1000))},
+		},
+		{
+			Name:  "Лев",
+			Param: []ast.Statement{c.randomString(20), float64(c.rand.Intn(10) + 1)},
+		},
+		{
+			Name:  "Прав",
+			Param: []ast.Statement{c.randomString(20), float64(c.rand.Intn(10) + 1)},
+		},
+		{
+			Name:  "Сред",
+			Param: []ast.Statement{c.randomString(20), float64(c.rand.Intn(10) + 1), float64(c.rand.Intn(10) + 1)},
+		},
+		{
+			Name:  "ПобитовыйСдвигВлево",
+			Param: []ast.Statement{float64(c.rand.Intn(1000)), float64(c.rand.Intn(10) + 1)},
+		},
+		{
+			Name:  "ПобитовыйСдвигВправо",
+			Param: []ast.Statement{float64(c.rand.Intn(1000)), float64(c.rand.Intn(10) + 1)},
+		},
+		{
+			Name:  "ПобитовоеИ",
+			Param: []ast.Statement{float64(c.rand.Intn(1000)), float64(c.rand.Intn(10) + 1)},
+		},
+	}
+
+	return pool[c.rand.Intn(len(pool))]
 }
 
 func (c *Obfuscator) randomString(lenStr int) (result string) {
@@ -385,11 +423,6 @@ func (c *Obfuscator) obfuscateString(str string, key int32) string {
 	var decrypted []rune
 	for _, c := range strings.ReplaceAll(str, "|", " ") {
 		decrypted = append(decrypted, c^key)
-		// if unicode.IsLetter(c) {
-		// 	decrypted = append(decrypted, c^key)
-		// } else {
-		// 	decrypted = append(decrypted, c)
-		// }
 	}
 
 	b := []byte(string(decrypted))
@@ -423,7 +456,7 @@ func (c *Obfuscator) newDecodeStringFunc(directive string) string {
 									Name: strParam,
 								},
 							},
-						}, 4, true),
+						}, 4),
 					},
 				},
 			},
@@ -432,7 +465,7 @@ func (c *Obfuscator) newDecodeStringFunc(directive string) string {
 				Left: ast.VarStatement{
 					Name: returnName,
 				},
-				Right: c.hideValue("", 4, true),
+				Right: c.hideValue("", 4),
 			},
 			&ast.LoopStatement{
 				Body: []ast.Statement{
@@ -451,7 +484,7 @@ func (c *Obfuscator) newDecodeStringFunc(directive string) string {
 									Name: "_",
 								},
 							},
-						}, 4, true),
+						}, 4),
 					},
 					&ast.ExpStatement{
 						Operation: ast.OpEq,
@@ -479,7 +512,7 @@ func (c *Obfuscator) newDecodeStringFunc(directive string) string {
 														Name: keyParam,
 													},
 												},
-											}, 4, true),
+											}, 4),
 											c.hideValue(ast.MethodStatement{
 												Name: "ПобитовоеИНе",
 												Param: []ast.Statement{
@@ -488,14 +521,14 @@ func (c *Obfuscator) newDecodeStringFunc(directive string) string {
 													},
 													c.hideValue(ast.VarStatement{
 														Name: "код",
-													}, 5, true),
+													}, 5),
 												},
-											}, 4, true),
+											}, 4),
 										},
-									}, 7, true),
+									}, 7),
 								},
 							},
-						}, 8, true),
+						}, 8),
 					},
 				},
 				To: ast.MethodStatement{
