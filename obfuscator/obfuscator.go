@@ -91,12 +91,15 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 
 	switch v := (*item).(type) {
 	case *ast.IfStatement:
+		c.walkStep(current, &v.Expression)
+
 		v.Expression = c.appendConditions(v.Expression)
 		if c.conf.ChangeConditions {
 			c.appendIfElseBlock(&v.IfElseBlock, c.rand.Intn(5))
 			c.appendGarbage(&v.ElseBlock)
 			c.appendGarbage(&v.TrueBlock)
 		}
+
 		// v.TrueBlock = c.shuffleExpressions(v.TrueBlock)
 		// v.ElseBlock = c.shuffleExpressions(v.ElseBlock)
 	case *ast.FunctionOrProcedure:
@@ -123,37 +126,7 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 			}
 		}
 	case *ast.ExpStatement:
-		switch r := v.Right.(type) {
-		case string:
-			if c.conf.HideString {
-				v.Right = ast.MethodStatement{
-					Name:  c.decodeStringFunc(current.Directive),
-					Param: []ast.Statement{c.obfuscateString(r, int32(key)), c.hideValue(key, 4, false)},
-				}
-			}
-			return
-		case ast.NewObjectStatement:
-			for i, param := range r.Param {
-				if str, ok := param.(string); ok && c.conf.HideString {
-					r.Param[i] = ast.MethodStatement{
-						Name:  c.decodeStringFunc(current.Directive),
-						Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4, false)},
-					}
-				}
-			}
-		}
-
-		switch r := v.Left.(type) {
-		case string:
-			if c.conf.HideString {
-				v.Left = ast.MethodStatement{
-					Name:  c.decodeStringFunc(current.Directive),
-					Param: []ast.Statement{c.obfuscateString(r, int32(key)), c.hideValue(key, 4, false)},
-				}
-			}
-
-			return
-		}
+		c.obfuscateExpStatement(current, (*interface{})(item))
 
 		if _, ok := v.Left.(ast.VarStatement); ok && c.conf.RepExpByEval {
 			switch v.Right.(type) {
@@ -179,6 +152,40 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 	case *ast.LoopStatement:
 		c.replaceLoopToGoto(&current.Body, v, false)
 		// v.Body = c.shuffleExpressions(v.Body)
+	}
+}
+
+func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, part *interface{}) {
+	key := float64(c.rand.Intn(90) + 10)
+
+	switch r := (*part).(type) {
+	case *ast.ExpStatement:
+		c.obfuscateExpStatement(currentPF, &r.Right)
+		c.obfuscateExpStatement(currentPF, &r.Left)
+	case string:
+		if c.conf.HideString {
+			*part = ast.MethodStatement{
+				Name:  c.decodeStringFunc(currentPF.Directive),
+				Param: []ast.Statement{c.obfuscateString(r, int32(key)), c.hideValue(key, 4, false)},
+			}
+		}
+		return
+	case ast.ReturnStatement:
+		if str, ok := r.Param.(string); ok && c.conf.HideString {
+			r.Param = ast.MethodStatement{
+				Name:  c.decodeStringFunc(currentPF.Directive),
+				Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4, false)},
+			}
+		}
+	case ast.IParams:
+		for i, param := range r.Params() {
+			if str, ok := param.(string); ok && c.conf.HideString {
+				r.Params()[i] = ast.MethodStatement{
+					Name:  c.decodeStringFunc(currentPF.Directive),
+					Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4, false)},
+				}
+			}
+		}
 	}
 }
 
@@ -264,19 +271,29 @@ func (c *Obfuscator) appendConditions(exp ast.Statement) ast.Statement {
 		return exp
 	}
 
+	return c.helperAppendConditions(exp, 3)
+}
+
+func (c *Obfuscator) helperAppendConditions(exp ast.Statement, depth int) ast.Statement {
+	if depth == 0 {
+		return exp
+	}
+
+	newConditions := &ast.ExpStatement{
+		Operation: ast.OpAnd,
+		Left:      exp,
+		Right:     c.convStrExpToExpStatement(<-c.trueCondition),
+	}
+
 	if c.rand.Intn(2) == 1 {
-		return &ast.ExpStatement{
-			Operation: ast.OpAnd,
-			Left:      exp,
-			Right:     c.convStrExpToExpStatement(<-c.trueCondition),
-		}
-	} else {
-		return &ast.ExpStatement{
+		newConditions = &ast.ExpStatement{
 			Operation: ast.OpAnd,
 			Left:      c.convStrExpToExpStatement(<-c.trueCondition),
 			Right:     exp,
 		}
 	}
+
+	return c.helperAppendConditions(newConditions, depth-1)
 }
 
 func (c *Obfuscator) expLess100() *ast.ExpStatement {

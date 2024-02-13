@@ -346,7 +346,8 @@ func TestObfuscate(t *testing.T) {
 func TestObfuscateLoop(t *testing.T) {
 
 	code := `&НаСервереБезКонтекста
-			Процедура Команда1НаСервере()     
+			Функция Команда1НаСервере()
+
 				Для а = 0 По 100 Цикл
 					Сообщить(а);	
 				КонецЦикла;
@@ -362,7 +363,7 @@ func TestObfuscateLoop(t *testing.T) {
 					Сообщить(а);	
 				КонецЦикла;
 
-			 КонецПроцедуры`
+			 КонецФункции`
 
 	obf := NewObfuscatory(context.Background(), Config{RepLoopByGoto: false})
 	obCode, err := obf.Obfuscate(code)
