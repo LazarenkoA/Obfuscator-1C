@@ -4,6 +4,8 @@ github.com/LazarenkoA/1c-language-parser v0.0.0-20240213184053-4f832ff1a34d h1:z
 github.com/LazarenkoA/1c-language-parser v0.0.0-20240213184053-4f832ff1a34d/go.mod h1:6iWBDF6rR8HmZsetpgNXi/Qq0MlRzhvhg8FmAl2gXt4=
 github.com/LazarenkoA/1c-language-parser v0.0.0-20240213204805-721daeb646cf h1:63KPf7sPWeHAeFwKbQ5ESyFfqUziT2xfR3HbII/PZRE=
 github.com/LazarenkoA/1c-language-parser v0.0.0-20240213204805-721daeb646cf/go.mod h1:6iWBDF6rR8HmZsetpgNXi/Qq0MlRzhvhg8FmAl2gXt4=
+github.com/LazarenkoA/1c-language-parser v0.0.0-20240215124519-350d7b41cbbb h1:rR91IkZePh1nB6mJkz2WpXUKkl6SGZec7VnooZZMfeo=
+github.com/LazarenkoA/1c-language-parser v0.0.0-20240215124519-350d7b41cbbb/go.mod h1:6iWBDF6rR8HmZsetpgNXi/Qq0MlRzhvhg8FmAl2gXt4=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
