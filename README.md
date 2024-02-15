@@ -81,5 +81,5 @@ func main() {
 до обфускации
 ![](img/ShareX_78xr65aMET.png)
 
-после
+после (максимальные настройки)
 ![](img/1cv8_tuEuQCwfJS.png)
