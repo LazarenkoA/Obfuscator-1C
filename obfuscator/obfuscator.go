@@ -2,9 +2,10 @@ package obfuscator
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -41,7 +42,6 @@ type Obfuscator struct {
 	ctx                  context.Context
 	conf                 Config
 	a                    *ast.AstNode
-	rand                 *rand.Rand
 	trueCondition        chan string
 	falseCondition       chan string
 	decodeStringFuncName map[string]string
@@ -55,7 +55,6 @@ func NewObfuscatory(ctx context.Context, conf Config) *Obfuscator {
 	c := &Obfuscator{
 		ctx:                  ctx,
 		conf:                 conf,
-		rand:                 rand.New(rand.NewSource(time.Now().UnixNano())),
 		trueCondition:        make(chan string, 10),
 		falseCondition:       make(chan string, 10),
 		decodeStringFuncName: make(map[string]string),
@@ -77,7 +76,9 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 
 	// pp.Println(c.a.ModuleStatement)
 
-	c.a.ModuleStatement.Walk(c.walkStep)
+	c.a.ModuleStatement.Walk(func(currentFP *ast.FunctionOrProcedure, statement *ast.Statement) {
+		c.walkStep(currentFP, nil, statement)
+	})
 
 	// fmt.Println(c.a.Print(ast.PrintConf{Margin: 4}))
 
@@ -86,16 +87,16 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 	return result, nil
 }
 
-func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statement) {
-	key := float64(c.rand.Intn(90) + 10)
+func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *ast.Statement) {
+	key := float64(random(10, 100))
 
 	switch v := (*item).(type) {
 	case *ast.IfStatement:
-		c.walkStep(current, &v.Expression)
+		c.walkStep(currentFP, item, &v.Expression)
 
 		v.Expression = c.appendConditions(v.Expression)
 		if c.conf.ChangeConditions {
-			c.appendIfElseBlock(&v.IfElseBlock, c.rand.Intn(5))
+			c.appendIfElseBlock(&v.IfElseBlock, int(random(0, 5)))
 			c.appendGarbage(&v.ElseBlock)
 			c.appendGarbage(&v.TrueBlock)
 		}
@@ -109,24 +110,42 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 		for i, param := range v.Param {
 			if exp, ok := param.(*ast.ExpStatement); ok {
 				tmp := ast.Statement(exp)
-				c.walkStep(current, &tmp)
+				c.walkStep(currentFP, item, &tmp)
 			}
 			if str, ok := param.(string); ok {
 				v.Param[i] = ast.MethodStatement{
-					Name:  c.decodeStringFunc(current.Directive),
+					Name:  c.decodeStringFunc(currentFP.Directive),
 					Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
 				}
 			}
 		}
+
+		if parent == nil && random(0, 2) == 1 {
+			str := c.a.PrintStatement(v, ast.PrintConf{})
+			if str[len(str)-1] == ';' {
+				str = str[:len(str)-1]
+			}
+
+			*item = ast.MethodStatement{
+				Name: "Выполнить",
+				Param: []ast.Statement{
+					ast.MethodStatement{
+						Name:  c.decodeStringFunc(currentFP.Directive),
+						Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
+					},
+				},
+			}
+		}
+
 	case *ast.ReturnStatement:
 		if str, ok := v.Param.(string); ok && c.conf.HideString {
 			v.Param = ast.MethodStatement{
-				Name:  c.decodeStringFunc(current.Directive),
+				Name:  c.decodeStringFunc(currentFP.Directive),
 				Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
 			}
 		}
 	case *ast.ExpStatement:
-		c.obfuscateExpStatement(current, (*interface{})(item))
+		c.obfuscateExpStatement(currentFP, (*interface{})(item))
 
 		if _, ok := v.Left.(ast.VarStatement); ok && c.conf.RepExpByEval {
 			switch v.Right.(type) {
@@ -139,7 +158,7 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 				v.Right = ast.MethodStatement{
 					Name: "Вычислить",
 					Param: []ast.Statement{ast.MethodStatement{
-						Name:  c.decodeStringFunc(current.Directive),
+						Name:  c.decodeStringFunc(currentFP.Directive),
 						Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
 					}},
 				}
@@ -148,15 +167,33 @@ func (c *Obfuscator) walkStep(current *ast.FunctionOrProcedure, item *ast.Statem
 			}
 		}
 	case ast.CallChainStatement:
-		c.walkStep(current, &v.Unit)
+		c.walkStep(currentFP, item, &v.Unit)
+
+		if parent == nil && random(0, 2) == 1 {
+			str := c.a.PrintStatement(v, ast.PrintConf{})
+			if str[len(str)-1] == ';' {
+				str = str[:len(str)-1]
+			}
+
+			*item = ast.MethodStatement{
+				Name: "Выполнить",
+				Param: []ast.Statement{
+					ast.MethodStatement{
+						Name:  c.decodeStringFunc(currentFP.Directive),
+						Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
+					},
+				},
+			}
+		}
+
 	case *ast.LoopStatement:
-		c.replaceLoopToGoto(&current.Body, v, false)
+		c.replaceLoopToGoto(&currentFP.Body, v, false)
 		// v.Body = c.shuffleExpressions(v.Body)
 	}
 }
 
 func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, part *interface{}) {
-	key := float64(c.rand.Intn(90) + 10)
+	key := float64(random(10, 100))
 
 	switch r := (*part).(type) {
 	case *ast.ExpStatement:
@@ -207,7 +244,7 @@ func (c *Obfuscator) decodeStringFunc(directive string) string {
 func (c *Obfuscator) hideValue(val interface{}, complexity int) ast.Statement {
 	switch val.(type) {
 	case string, bool, float64, int, time.Time, *ast.ExpStatement, ast.MethodStatement:
-		return c.newTernary(val, c.rand.Intn(complexity-2)+2, c.rand.Intn(complexity-1))
+		return c.newTernary(val, int(random(2, complexity)), int(random(0, complexity-1)))
 	default:
 		return val
 	}
@@ -218,27 +255,27 @@ func (c *Obfuscator) appendGarbage(body *[]ast.Statement) {
 		return
 	}
 
-	if c.rand.Intn(2) == 1 {
+	if random(0, 2) == 1 {
 		*body = append(*body, &ast.ExpStatement{
 			Operation: ast.OpEq,
 			Left:      ast.VarStatement{Name: c.randomString(20)},
 			Right:     c.hideValue(c.randomString(5), 4),
 		})
 	}
-	if c.rand.Intn(2) == 1 {
+	if random(0, 2) == 1 {
 		*body = append(*body, &ast.ExpStatement{
 			Operation: ast.OpEq,
 			Left:      ast.VarStatement{Name: c.randomString(10)},
-			Right:     c.hideValue(float64(c.rand.Intn(200)-100), 5),
+			Right:     c.hideValue(float64(random(-100, 100)), 5),
 		})
 	}
-	if c.rand.Intn(2) == 1 {
+	if random(0, 2) == 1 {
 		IF := &ast.IfStatement{Expression: c.convStrExpToExpStatement(<-c.falseCondition)}
 
-		if c.rand.Intn(2) == 1 {
-			c.appendIfElseBlock(&IF.IfElseBlock, c.rand.Intn(5))
+		if random(0, 2) == 1 {
+			c.appendIfElseBlock(&IF.IfElseBlock, int(random(0, 5)))
 		}
-		if c.rand.Intn(2) == 1 {
+		if random(0, 2) == 1 {
 			c.appendGarbage(&IF.ElseBlock)
 			c.appendGarbage(&IF.TrueBlock)
 		}
@@ -247,9 +284,9 @@ func (c *Obfuscator) appendGarbage(body *[]ast.Statement) {
 		IF.ElseBlock = c.shuffleExpressions(IF.ElseBlock)
 		*body = append(*body, IF)
 	}
-	if c.rand.Intn(2) == 1 {
+	if random(0, 2) == 1 {
 		loop := &ast.LoopStatement{WhileExpr: c.convStrExpToExpStatement(<-c.falseCondition)}
-		if c.rand.Intn(2) == 1 {
+		if random(0, 2) == 1 {
 			c.appendGarbage(&loop.Body)
 		}
 
@@ -285,7 +322,7 @@ func (c *Obfuscator) helperAppendConditions(exp ast.Statement, depth int) ast.St
 		Right:     c.convStrExpToExpStatement(<-c.trueCondition),
 	}
 
-	if c.rand.Intn(2) == 1 {
+	if random(0, 2) == 1 {
 		newConditions = &ast.ExpStatement{
 			Operation: ast.OpAnd,
 			Left:      c.convStrExpToExpStatement(<-c.trueCondition),
@@ -310,15 +347,15 @@ func (c *Obfuscator) expLess100() *ast.ExpStatement {
 					Left: &ast.ExpStatement{
 						Operation: 2,
 						Left:      2.000000,
-						Right:     float64(c.rand.Intn(14)),
+						Right:     float64(random(0, 14)),
 					},
 					Right: &ast.ExpStatement{
 						Operation: 2,
 						Left:      3.000000,
-						Right:     float64(c.rand.Intn(14)),
+						Right:     float64(random(0, 14)),
 					},
 				},
-				Right: float64(c.rand.Intn(14)),
+				Right: float64(random(0, 14)),
 			},
 			Right: 5.000000,
 		},
@@ -358,9 +395,9 @@ func (c *Obfuscator) newTernary(trueValue interface{}, depth, trueStep int) ast.
 func (c *Obfuscator) fakeValue(value interface{}) interface{} {
 	switch value.(type) {
 	case float64:
-		return float64(c.rand.Intn(1000))
+		return float64(random(0, 1000))
 	case int:
-		return float64(c.rand.Intn(1000))
+		return float64(random(0, 1000))
 	case string:
 		return c.randomString(10)
 	case *ast.ExpStatement:
@@ -377,35 +414,35 @@ func (c *Obfuscator) fakeMethods() ast.MethodStatement {
 	pool := []ast.MethodStatement{
 		{
 			Name:  "XMLСтрока",
-			Param: []ast.Statement{float64(c.rand.Intn(1000))},
+			Param: []ast.Statement{float64(random(0, 1000))},
 		},
 		{
 			Name:  "Лев",
-			Param: []ast.Statement{c.randomString(20), float64(c.rand.Intn(10) + 1)},
+			Param: []ast.Statement{c.randomString(20), float64(random(1, 10))},
 		},
 		{
 			Name:  "Прав",
-			Param: []ast.Statement{c.randomString(20), float64(c.rand.Intn(10) + 1)},
+			Param: []ast.Statement{c.randomString(20), float64(random(1, 10))},
 		},
 		{
 			Name:  "Сред",
-			Param: []ast.Statement{c.randomString(20), float64(c.rand.Intn(10) + 1), float64(c.rand.Intn(10) + 1)},
+			Param: []ast.Statement{c.randomString(20), float64(random(1, 10)), float64(random(0, 10))},
 		},
 		{
 			Name:  "ПобитовыйСдвигВлево",
-			Param: []ast.Statement{float64(c.rand.Intn(1000)), float64(c.rand.Intn(10) + 1)},
+			Param: []ast.Statement{float64(random(0, 1000)), float64(random(1, 10))},
 		},
 		{
 			Name:  "ПобитовыйСдвигВправо",
-			Param: []ast.Statement{float64(c.rand.Intn(1000)), float64(c.rand.Intn(10) + 1)},
+			Param: []ast.Statement{float64(random(0, 1000)), float64(random(1, 10))},
 		},
 		{
 			Name:  "ПобитовоеИ",
-			Param: []ast.Statement{float64(c.rand.Intn(1000)), float64(c.rand.Intn(10) + 1)},
+			Param: []ast.Statement{float64(random(0, 1000)), float64(random(1, 10))},
 		},
 	}
 
-	return pool[c.rand.Intn(len(pool))]
+	return pool[random(0, len(pool))]
 }
 
 func (c *Obfuscator) randomString(lenStr int) (result string) {
@@ -413,7 +450,7 @@ func (c *Obfuscator) randomString(lenStr int) (result string) {
 	builder := strings.Builder{}
 
 	for builder.Len() < lenStr {
-		builder.WriteString(string(charset[c.rand.Intn(len(charset))]))
+		builder.WriteString(string(charset[random(0, len(charset))]))
 	}
 
 	return builder.String()
@@ -571,8 +608,8 @@ func (c *Obfuscator) newDecodeStringFunc(directive string) string {
 
 func (c *Obfuscator) genCondition() {
 	expresion := func(op string) (string, bool) {
-		left := c.randomMathExp(c.rand.Intn(5) + 2)
-		right := c.randomMathExp(c.rand.Intn(5) + 2)
+		left := c.randomMathExp(int(random(2, 7)))
+		right := c.randomMathExp(int(random(2, 7)))
 
 		expression, err := govaluate.NewEvaluableExpression(left + op + right)
 		if err != nil {
@@ -636,9 +673,9 @@ func (c *Obfuscator) randomMathExp(lenExp int) (result string) {
 	operations := []string{"-", "+", "/", "*"}
 
 	for i := 0; i < lenExp; i++ {
-		builder.WriteString(strconv.Itoa(c.rand.Intn(100) + 1))
+		builder.WriteString(strconv.Itoa(int(random(1, 1000))))
 		if i < lenExp-1 {
-			builder.WriteString(operations[c.rand.Intn(len(operations))])
+			builder.WriteString(operations[random(0, len(operations))])
 		}
 	}
 
@@ -748,4 +785,20 @@ func (c *Obfuscator) shuffleExpressions(body []ast.Statement) []ast.Statement {
 
 	newBody = append(newBody, end)
 	return newBody
+}
+
+// [min, max)
+func random(min, max int) int64 {
+	max -= min
+	if max <= 0 {
+		return 0
+	}
+
+	randomNumber, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		fmt.Println(errors.Wrap(err, "rand error"))
+		return 0
+	}
+
+	return randomNumber.Int64() + int64(min)
 }
