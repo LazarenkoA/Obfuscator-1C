@@ -88,6 +88,11 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 }
 
 func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *ast.Statement) {
+	if currentFP == nil {
+		fmt.Println("! you can obfuscate a procedure or function")
+		return
+	}
+
 	key := float64(random(10, 100))
 
 	switch v := (*item).(type) {
