@@ -108,14 +108,13 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 		// v.Body = c.shuffleExpressions(v.Body)
 	case ast.MethodStatement:
 		for i, param := range v.Param {
-			if exp, ok := param.(*ast.ExpStatement); ok {
-				tmp := ast.Statement(exp)
-				c.walkStep(currentFP, item, &tmp)
-			}
-			if str, ok := param.(string); ok {
+			switch casted := param.(type) {
+			case *ast.ExpStatement, ast.MethodStatement:
+				c.walkStep(currentFP, item, &casted)
+			case string:
 				v.Param[i] = ast.MethodStatement{
 					Name:  c.decodeStringFunc(currentFP.Directive),
-					Param: []ast.Statement{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)},
+					Param: []ast.Statement{c.obfuscateString(casted, int32(key)), c.hideValue(key, 4)},
 				}
 			}
 		}
@@ -185,10 +184,13 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 				},
 			}
 		}
-
 	case *ast.LoopStatement:
 		c.replaceLoopToGoto(&currentFP.Body, v, false)
-		// v.Body = c.shuffleExpressions(v.Body)
+	case ast.ThrowStatement:
+		switch casted := v.Param.(type) {
+		case *ast.ExpStatement, ast.MethodStatement:
+			c.walkStep(currentFP, item, &casted)
+		}
 	}
 }
 
