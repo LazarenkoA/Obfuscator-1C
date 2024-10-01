@@ -82,7 +82,7 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 
 	// fmt.Println(c.a.Print(ast.PrintConf{Margin: 4}))
 
-	result := c.a.Print(ast.PrintConf{OneLine: true})
+	result := c.a.Print(ast.PrintConf{OneLine: true, Margin: 1})
 	// result = strings.ToLower(result) // нельзя так делать, все поломает
 	return result, nil
 }
