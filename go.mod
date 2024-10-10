@@ -2,10 +2,10 @@ module github.com/LazarenkoA/Obfuscator-1C
 
 go 1.21.4
 
-//replace github.com/LazarenkoA/1c-language-parser => C:\GoProject\1C-YACC\
+// replace github.com/LazarenkoA/1c-language-parser => C:\GoProject\1c-language-parser
 
 require (
-	github.com/LazarenkoA/1c-language-parser v0.0.0-20240222205039-7ea389dd63f3
+	github.com/LazarenkoA/1c-language-parser v0.0.0-20241010073535-84a85ea83afc
 	github.com/google/uuid v1.6.0
 	github.com/knetic/govaluate v3.0.0+incompatible
 	github.com/pkg/errors v0.9.1

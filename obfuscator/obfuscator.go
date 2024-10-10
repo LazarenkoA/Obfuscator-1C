@@ -708,10 +708,20 @@ func (c *Obfuscator) loopToGoto(loop *ast.LoopStatement) []ast.Statement {
 		newBody := []ast.Statement{
 			start,
 			&ast.IfStatement{
-				Expression: loop.WhileExpr.(ast.INot).Not(),
+				Expression: c.invertExp(loop.WhileExpr),
 				TrueBlock:  []ast.Statement{ast.GoToStatement{Label: end}},
 			},
 		}
+
+		// меняем прервать и продолжить
+		ast.StatementWalk(loop.Body, func(current *ast.FunctionOrProcedure, statement *ast.Statement) {
+			switch (*statement).(type) {
+			case ast.ContinueStatement:
+				*statement = ast.GoToStatement{Label: start}
+			case ast.BreakStatement:
+				*statement = ast.GoToStatement{Label: end}
+			}
+		})
 
 		newBody = append(append(newBody, loop.Body...), ast.GoToStatement{Label: start}, end)
 		return newBody
@@ -753,6 +763,17 @@ func (c *Obfuscator) loopToGoto(loop *ast.LoopStatement) []ast.Statement {
 	}
 
 	return []ast.Statement{loop}
+}
+
+func (c *Obfuscator) invertExp(exp ast.Statement) ast.Statement {
+	switch v := exp.(type) {
+	case ast.INot:
+		return v.Not()
+	case bool:
+		return !v
+	default:
+		return exp
+	}
 }
 
 func (c *Obfuscator) replaceLoopToGoto(body *[]ast.Statement, loop *ast.LoopStatement, force bool) {
