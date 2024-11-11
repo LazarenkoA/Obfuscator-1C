@@ -1400,20 +1400,24 @@ func TestObfuscateLoop(t *testing.T) {
 
 			 КонецФункции`
 
-	obf := NewObfuscatory(context.Background(), Config{RepLoopByGoto: false})
+	obf := NewObfuscatory(context.Background(), Config{})
 	obCode, err := obf.Obfuscate(code)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	assert.NoError(t, err)
 
 	// должны быть равны
 	assert.Equal(t, true, compareHashes(code, obCode))
 
+	if t.Failed() {
+		t.Log(obCode)
+		return
+	}
+
 	obf = NewObfuscatory(context.Background(), Config{RepLoopByGoto: true})
 	obCode, err = obf.Obfuscate(code)
-	if err != nil {
-		fmt.Println(err)
+	assert.NoError(t, err)
+
+	if t.Failed() {
+		t.Log(obCode)
 		return
 	}
 

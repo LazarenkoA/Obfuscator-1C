@@ -74,13 +74,9 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 		return code, nil
 	}
 
-	// pp.Println(c.a.ModuleStatement)
-
 	c.a.ModuleStatement.Walk(func(currentFP *ast.FunctionOrProcedure, statement *ast.Statement) {
 		c.walkStep(currentFP, nil, statement)
 	})
-
-	// fmt.Println(c.a.Print(ast.PrintConf{Margin: 4}))
 
 	result := c.a.Print(ast.PrintConf{OneLine: true, Margin: 1})
 	// result = strings.ToLower(result) // нельзя так делать, все поломает
@@ -124,8 +120,8 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 			}
 		}
 
-		if parent == nil && random(0, 2) == 1 {
-			str := c.a.PrintStatement(v, ast.PrintConf{})
+		if c.conf.RepExpByEval && parent == nil && random(0, 2) == 1 {
+			str := c.a.PrintStatementWithConf(v, ast.PrintConf{})
 			if str[len(str)-1] == ';' {
 				str = str[:len(str)-1]
 			}
@@ -154,7 +150,7 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 		if _, ok := v.Left.(ast.VarStatement); ok && c.conf.RepExpByEval {
 			switch v.Right.(type) {
 			case ast.MethodStatement, ast.CallChainStatement, ast.NewObjectStatement:
-				str := c.a.PrintStatement(v.Right, ast.PrintConf{})
+				str := c.a.PrintStatementWithConf(v.Right, ast.PrintConf{})
 				if str[len(str)-1] == ';' {
 					str = str[:len(str)-1]
 				}
@@ -173,8 +169,8 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 	case ast.CallChainStatement:
 		c.walkStep(currentFP, item, &v.Unit)
 
-		if parent == nil && random(0, 2) == 1 {
-			str := c.a.PrintStatement(v, ast.PrintConf{})
+		if c.conf.RepExpByEval && parent == nil && random(0, 2) == 1 {
+			str := c.a.PrintStatementWithConf(v, ast.PrintConf{})
 			if str[len(str)-1] == ';' {
 				str = str[:len(str)-1]
 			}
