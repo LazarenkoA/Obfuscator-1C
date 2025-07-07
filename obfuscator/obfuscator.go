@@ -449,7 +449,7 @@ func (c *Obfuscator) fakeMethods() ast.MethodStatement {
 }
 
 func (c *Obfuscator) randomString(lenStr int) (result string) {
-	charset := []rune("abcdefghijklmnopqrstuvwxyzйцукенгшщзхъфывапролджэячсмитьбю")
+	charset := []rune("abcdefghijklmnopqrstuvwxyz")
 	builder := strings.Builder{}
 
 	for builder.Len() < lenStr {
