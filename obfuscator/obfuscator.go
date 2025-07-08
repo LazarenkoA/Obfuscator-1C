@@ -136,7 +136,6 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 				},
 			}
 		}
-
 	case *ast.ReturnStatement:
 		if str, ok := v.Param.(string); ok && c.conf.HideString {
 			v.Param = ast.MethodStatement{
@@ -176,7 +175,7 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 			}
 
 			*item = ast.MethodStatement{
-				Name: "Выполнить",
+				Name: "Вычислить",
 				Param: []ast.Statement{
 					ast.MethodStatement{
 						Name:  c.decodeStringFunc(currentFP.Directive),
