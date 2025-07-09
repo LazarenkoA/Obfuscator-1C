@@ -74,8 +74,8 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 		return code, nil
 	}
 
-	c.a.ModuleStatement.Walk(func(currentFP *ast.FunctionOrProcedure, statement *ast.Statement) {
-		c.walkStep(currentFP, nil, statement)
+	c.a.ModuleStatement.Walk(func(root *ast.FunctionOrProcedure, parentStm, stm *ast.Statement) {
+		c.walkStep(root, parentStm, stm)
 	})
 
 	result := c.a.Print(ast.PrintConf{OneLine: true, Margin: 1})
@@ -166,16 +166,14 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 			}
 		}
 	case ast.CallChainStatement:
-		c.walkStep(currentFP, item, &v.Unit)
-
-		if c.conf.RepExpByEval && parent == nil && random(0, 2) == 1 {
+		if c.conf.RepExpByEval && random(0, 2) == 1 && (c.isMethod(parent) || c.isExp(parent) || c.isFP(parent)) {
 			str := c.a.PrintStatementWithConf(v, ast.PrintConf{})
 			if str[len(str)-1] == ';' {
 				str = str[:len(str)-1]
 			}
 
 			*item = ast.MethodStatement{
-				Name: "Вычислить",
+				Name: ast.IF(c.isMethod(parent) || c.isExp(parent), "Вычислить", "Выполнить"),
 				Param: []ast.Statement{
 					ast.MethodStatement{
 						Name:  c.decodeStringFunc(currentFP.Directive),
@@ -335,36 +333,6 @@ func (c *Obfuscator) helperAppendConditions(exp ast.Statement, depth int) ast.St
 	return c.helperAppendConditions(newConditions, depth-1)
 }
 
-func (c *Obfuscator) expLess100() *ast.ExpStatement {
-	// fname := c.appendRandFunc()
-
-	return &ast.ExpStatement{
-		Operation: 0,
-		Left: &ast.ExpStatement{
-			Operation: 3,
-			Left: &ast.ExpStatement{
-				Operation: 2,
-				Left: &ast.ExpStatement{
-					Operation: 0,
-					Left: &ast.ExpStatement{
-						Operation: 2,
-						Left:      2.000000,
-						Right:     float64(random(0, 14)),
-					},
-					Right: &ast.ExpStatement{
-						Operation: 2,
-						Left:      3.000000,
-						Right:     float64(random(0, 14)),
-					},
-				},
-				Right: float64(random(0, 14)),
-			},
-			Right: 5.000000,
-		},
-		Right: 7.000000,
-	}
-}
-
 func (c *Obfuscator) newTernary(trueValue interface{}, depth, trueStep int) ast.TernaryStatement {
 
 	if depth < trueStep {
@@ -481,7 +449,7 @@ func (c *Obfuscator) newDecodeStringFunc(directive string) string {
 		Name: funcName,
 		Body: []ast.Statement{
 			&ast.ExpStatement{
-				Operation: 4,
+				Operation: ast.OpEq,
 				Left: ast.VarStatement{
 					Name: strParam,
 				},
@@ -609,7 +577,7 @@ func (c *Obfuscator) newDecodeStringFunc(directive string) string {
 }
 
 func (c *Obfuscator) genCondition() {
-	expresion := func(op string) (string, bool) {
+	expression := func(op string) (string, bool) {
 		left := c.randomMathExp(int(random(2, 7)))
 		right := c.randomMathExp(int(random(2, 7)))
 
@@ -638,10 +606,10 @@ func (c *Obfuscator) genCondition() {
 			case <-c.ctx.Done():
 				return
 			default:
-				if exp, ok := expresion(">"); ok {
+				if exp, ok := expression(">"); ok {
 					c.trueCondition <- exp
 				}
-				if exp, ok := expresion("<"); ok {
+				if exp, ok := expression("<"); ok {
 					c.trueCondition <- exp
 				}
 			}
@@ -657,10 +625,10 @@ func (c *Obfuscator) genCondition() {
 			case <-c.ctx.Done():
 				return
 			default:
-				if exp, ok := expresion(">"); !ok && exp != "" {
+				if exp, ok := expression(">"); !ok && exp != "" {
 					c.falseCondition <- exp
 				}
-				if exp, ok := expresion("<"); !ok && exp != "" {
+				if exp, ok := expression("<"); !ok && exp != "" {
 					c.falseCondition <- exp
 				}
 			}
@@ -685,13 +653,13 @@ func (c *Obfuscator) randomMathExp(lenExp int) (result string) {
 }
 
 func (c *Obfuscator) convStrExpToExpStatement(str string) *ast.ExpStatement {
-	astObj := ast.NewAST(fmt.Sprintf(`Процедура dsds() %s КонецПроцедуры`, str))
+	astObj := ast.NewAST(fmt.Sprintf(`Процедура dsds() tmp = %s КонецПроцедуры`, str))
 	if err := astObj.Parse(); err != nil {
 		fmt.Println(errors.Wrap(err, "ast parse error"))
 		return new(ast.ExpStatement)
 	}
 
-	return astObj.ModuleStatement.Body[0].(*ast.FunctionOrProcedure).Body[0].(*ast.ExpStatement)
+	return astObj.ModuleStatement.Body[0].(*ast.FunctionOrProcedure).Body[0].(*ast.ExpStatement).Right.(*ast.ExpStatement)
 }
 
 func (c *Obfuscator) loopToGoto(loop *ast.LoopStatement) []ast.Statement {
@@ -709,12 +677,12 @@ func (c *Obfuscator) loopToGoto(loop *ast.LoopStatement) []ast.Statement {
 		}
 
 		// меняем прервать и продолжить
-		ast.StatementWalk(loop.Body, func(current *ast.FunctionOrProcedure, statement *ast.Statement) {
-			switch (*statement).(type) {
+		ast.StatementWalk(loop, loop.Body, func(root *ast.FunctionOrProcedure, parentStm, stm *ast.Statement) {
+			switch (*stm).(type) {
 			case ast.ContinueStatement:
-				*statement = ast.GoToStatement{Label: start}
+				*stm = ast.GoToStatement{Label: start}
 			case ast.BreakStatement:
-				*statement = ast.GoToStatement{Label: end}
+				*stm = ast.GoToStatement{Label: end}
 			}
 		})
 
