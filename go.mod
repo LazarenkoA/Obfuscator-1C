@@ -7,7 +7,7 @@ toolchain go1.24.1
 //replace github.com/LazarenkoA/1c-language-parser => ..\1c-language-parser
 
 require (
-	github.com/LazarenkoA/1c-language-parser v0.0.0-20250709202205-c34b280d64c2
+	github.com/LazarenkoA/1c-language-parser v0.0.0-20250710201048-62ffedf98216
 	github.com/google/uuid v1.6.0
 	github.com/knetic/govaluate v3.0.0+incompatible
 	github.com/pkg/errors v0.9.1
