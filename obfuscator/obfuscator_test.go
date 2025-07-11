@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1372,7 +1373,7 @@ func TestObfuscate(t *testing.T) {
 		return
 	}
 
-	file, _ := os.Create(uuid.NewString())
+	file, _ := os.Create(filepath.Join("out_data", uuid.NewString()))
 	file.WriteString(obCode)
 	file.Close()
 
@@ -1423,6 +1424,30 @@ func TestObfuscateLoop(t *testing.T) {
 
 	// не должны быть равны
 	assert.Equal(t, false, compareHashes(code, obCode))
+}
+
+func TestObfuscateExp(t *testing.T) {
+
+	code := `&НаКлиенте
+			Функция Команда1НаСервере()
+
+				ВызватьИсключение(НСтр("ru = 'Недостаточно прав на использование сертификата.'"),
+						КатегорияОшибки.НарушениеПравДоступа);
+			 КонецФункции`
+
+	obf := NewObfuscatory(context.Background(), Config{
+		RepExpByTernary:  true,
+		RepLoopByGoto:    true,
+		RepExpByEval:     true,
+		HideString:       true,
+		ChangeConditions: true,
+		AppendGarbage:    true,
+	})
+
+	obCode, err := obf.Obfuscate(code)
+	if assert.NoError(t, err) {
+		fmt.Println(obCode)
+	}
 }
 
 func TestShuffleExp(t *testing.T) {
