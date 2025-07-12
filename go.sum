@@ -1,6 +1,6 @@
-github.com/LazarenkoA/1c-language-parser v0.0.0-20250710201048-62ffedf98216/go.mod h1:woohDfN8tmbmwLXZUvJsnilOCRoyUAZCmoYwsHA08V0=
-github.com/LazarenkoA/1c-language-parser v0.0.0-20250711194028-af7a736f9721 h1:lMAI1sqHEsswLZE2+kxuUWNS/NUzxtXI+6n02b1sPMk=
 github.com/LazarenkoA/1c-language-parser v0.0.0-20250711194028-af7a736f9721/go.mod h1:woohDfN8tmbmwLXZUvJsnilOCRoyUAZCmoYwsHA08V0=
+github.com/LazarenkoA/1c-language-parser v0.0.0-20250712103457-959273a466ac h1:R0ewJHLdDfcH5nB246OZkLgerVilruBVw/gcOFirJBE=
+github.com/LazarenkoA/1c-language-parser v0.0.0-20250712103457-959273a466ac/go.mod h1:woohDfN8tmbmwLXZUvJsnilOCRoyUAZCmoYwsHA08V0=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

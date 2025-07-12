@@ -113,9 +113,8 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 			case *ast.ExpStatement, ast.MethodStatement:
 				c.walkStep(currentFP, item, &casted)
 			case string:
-				v.Param.Statements[i] = ast.MethodStatement{
-					Name:  c.decodeStringFunc(currentFP.Directive),
-					Param: ast.ExprStatements{Statements: ast.Statements{c.obfuscateString(casted, int32(key)), c.hideValue(key, 4)}},
+				if c.conf.HideString {
+					v.Param.Statements[i] = c.createObfuscateStringStatement(currentFP.Directive, casted, int32(key))
 				}
 			}
 		}
@@ -129,19 +128,13 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 			*item = ast.MethodStatement{
 				Name: "Выполнить",
 				Param: ast.ExprStatements{
-					Statements: ast.Statements{ast.MethodStatement{
-						Name:  c.decodeStringFunc(currentFP.Directive),
-						Param: ast.ExprStatements{Statements: ast.Statements{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)}},
-					}},
+					Statements: ast.Statements{c.createObfuscateStringStatement(currentFP.Directive, str, int32(key))},
 				},
 			}
 		}
 	case *ast.ReturnStatement:
 		if str, ok := v.Param.(string); ok && c.conf.HideString {
-			v.Param = ast.MethodStatement{
-				Name:  c.decodeStringFunc(currentFP.Directive),
-				Param: ast.ExprStatements{Statements: ast.Statements{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)}},
-			}
+			v.Param = c.createObfuscateStringStatement(currentFP.Directive, str, int32(key))
 		}
 	case *ast.ExpStatement:
 		c.obfuscateExpStatement(currentFP, (*interface{})(item))
@@ -193,6 +186,12 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 		case *ast.ExpStatement, ast.MethodStatement, ast.ExprStatements:
 			c.walkStep(currentFP, item, &casted)
 		}
+	case ast.AssignmentStatement:
+		for i, p := range v.Expr.Statements {
+			if isString(p) && c.conf.HideString {
+				v.Expr.Statements[i] = c.createObfuscateStringStatement(currentFP.Directive, p.(string), int32(key))
+			}
+		}
 	}
 }
 
@@ -209,10 +208,7 @@ func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, p
 		}
 	case string:
 		if c.conf.HideString {
-			*part = ast.MethodStatement{
-				Name:  c.decodeStringFunc(currentPF.Directive),
-				Param: ast.ExprStatements{Statements: ast.Statements{c.obfuscateString(r, int32(key)), c.hideValue(key, 4)}},
-			}
+			*part = c.createObfuscateStringStatement(currentPF.Directive, r, int32(key))
 		}
 		return
 	case ast.ReturnStatement:
@@ -225,12 +221,16 @@ func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, p
 	case ast.IParams:
 		for i, param := range r.Params() {
 			if str, ok := param.(string); ok && c.conf.HideString {
-				r.Params()[i] = ast.MethodStatement{
-					Name:  c.decodeStringFunc(currentPF.Directive),
-					Param: ast.ExprStatements{Statements: ast.Statements{c.obfuscateString(str, int32(key)), c.hideValue(key, 4)}},
-				}
+				r.Params()[i] = c.createObfuscateStringStatement(currentPF.Directive, str, int32(key))
 			}
 		}
+	}
+}
+
+func (c *Obfuscator) createObfuscateStringStatement(directive string, str string, key int32) ast.MethodStatement {
+	return ast.MethodStatement{
+		Name:  c.decodeStringFunc(directive),
+		Param: ast.ExprStatements{Statements: ast.Statements{c.obfuscateString(str, key), c.hideValue(key, 4)}},
 	}
 }
 
@@ -247,7 +247,7 @@ func (c *Obfuscator) decodeStringFunc(directive string) string {
 
 func (c *Obfuscator) hideValue(val interface{}, complexity int) ast.Statement {
 	switch val.(type) {
-	case string, bool, float64, int, time.Time, *ast.ExpStatement, ast.MethodStatement:
+	case string, bool, float64, int, int32, int64, float32, time.Time, *ast.ExpStatement, ast.MethodStatement:
 		return c.newTernary(val, int(random(2, complexity)), int(random(0, complexity-1)))
 	default:
 		return val
@@ -338,7 +338,6 @@ func (c *Obfuscator) helperAppendConditions(exp ast.Statement, depth int) ast.St
 }
 
 func (c *Obfuscator) newTernary(trueValue interface{}, depth, trueStep int) ast.TernaryStatement {
-
 	if depth < trueStep {
 		depth, trueStep = trueStep, depth
 	}
@@ -368,9 +367,7 @@ func (c *Obfuscator) newTernary(trueValue interface{}, depth, trueStep int) ast.
 
 func (c *Obfuscator) fakeValue(value interface{}) interface{} {
 	switch value.(type) {
-	case float64:
-		return float64(random(0, 1000))
-	case int:
+	case float64, float32, int, int32, int64:
 		return float64(random(0, 1000))
 	case string:
 		return c.randomString(10)
@@ -796,4 +793,9 @@ func random(min, max int) int64 {
 	}
 
 	return randomNumber.Int64() + int64(min)
+}
+
+func isString(item ast.Statement) bool {
+	_, ok := item.(string)
+	return ok
 }
