@@ -74,7 +74,15 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 		return code, nil
 	}
 
+	//hide := map[string]struct{}{}
 	c.a.ModuleStatement.Walk(func(root *ast.FunctionOrProcedure, parentStm, stm *ast.Statement) {
+		//if _, ok := hide[root.Name+root.Directive]; !ok {
+		//	for i := range root.Params {
+		//		root.Params[i].Name = c.randomString(int(random(5, 50)))
+		//	}
+		//	hide[root.Name+root.Directive] = struct{}{}
+		//}
+
 		c.walkStep(root, parentStm, stm)
 	})
 
@@ -91,7 +99,13 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 
 	key := float64(random(10, 100))
 
+	//c.hideParam(currentFP, item)
+
 	switch v := (*item).(type) {
+	case string:
+		if c.conf.HideString {
+			*item = c.createObfuscateStringStatement(currentFP.Directive, v, int32(key))
+		}
 	case *ast.IfStatement:
 		c.walkStep(currentFP, item, &v.Expression)
 
@@ -178,8 +192,8 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 	case *ast.LoopStatement:
 		c.replaceLoopToGoto(&currentFP.Body, v, false)
 	case ast.ExprStatements:
-		for _, p := range v.Statements {
-			c.walkStep(currentFP, item, &p)
+		for i := range v.Statements {
+			c.walkStep(currentFP, item, &v.Statements[i])
 		}
 	case ast.ThrowStatement:
 		switch casted := v.Param.(type) {
@@ -188,11 +202,26 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 		}
 	case ast.AssignmentStatement:
 		for i, p := range v.Expr.Statements {
-			if isString(p) && c.conf.HideString {
-				v.Expr.Statements[i] = c.createObfuscateStringStatement(currentFP.Directive, p.(string), int32(key))
+			switch vv := (p).(type) {
+			case string:
+				if c.conf.HideString {
+					v.Expr.Statements[i] = c.createObfuscateStringStatement(currentFP.Directive, vv, int32(key))
+				}
+			case ast.NewObjectStatement:
+				c.walkStep(currentFP, item, &p)
 			}
 		}
+	case ast.NewObjectStatement:
+		c.walkStep(currentFP, item, ptr(ast.Statement(v.Param)))
 	}
+}
+
+// hideParam переименовывает входящие параметры
+func (c *Obfuscator) hideParam(currentFP *ast.FunctionOrProcedure, item *ast.Statement) {
+	if len(currentFP.Params) == 0 {
+		return
+	}
+
 }
 
 func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, part *interface{}) {
