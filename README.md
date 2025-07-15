@@ -23,6 +23,7 @@ func main() {
 		HideString:       true,
 		ChangeConditions: true,
 		AppendGarbage:    true,
+		CallStackHell:    true,
 	})
 
 	obCode, err := obf.Obfuscate(code)

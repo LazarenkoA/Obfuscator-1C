@@ -36,6 +36,9 @@ type Config struct {
 
 	// ShuffleExpressions изменять порядок выражений
 	// ShuffleExpressions bool
+
+	// CallStackHell прятать выражения за большим количеством фейковых функций
+	CallStackHell bool
 }
 
 type Obfuscator struct {
@@ -130,10 +133,14 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 				if c.conf.HideString {
 					v.Param.Statements[i] = c.createObfuscateStringStatement(currentFP.Directive, casted, int32(key))
 				}
+			case ast.VarStatement:
+				if c.conf.RepExpByTernary {
+					v.Param.Statements[i] = c.hideValue(v.Param.Statements[i], 3)
+				}
 			}
 		}
 
-		if c.conf.RepExpByEval && parent == nil && random(0, 2) == 1 {
+		if c.conf.RepExpByEval && parent == nil {
 			str := c.a.PrintStatementWithConf(v, ast.PrintConf{})
 			if str[len(str)-1] == ';' {
 				str = str[:len(str)-1]
@@ -201,18 +208,15 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 			c.walkStep(currentFP, item, &casted)
 		}
 	case ast.AssignmentStatement:
-		for i, p := range v.Expr.Statements {
-			switch vv := (p).(type) {
-			case string:
-				if c.conf.HideString {
-					v.Expr.Statements[i] = c.createObfuscateStringStatement(currentFP.Directive, vv, int32(key))
-				}
-			case ast.NewObjectStatement:
-				c.walkStep(currentFP, item, &p)
-			}
+		c.walkStep(currentFP, item, ptr(ast.Statement(v.Expr)))
+
+		if c.conf.CallStackHell {
+			c.hideBehindCallStack(currentFP.Directive, v.Expr, int(random(3, 7)))
 		}
 	case ast.NewObjectStatement:
 		c.walkStep(currentFP, item, ptr(ast.Statement(v.Param)))
+	case ast.ItemStatement:
+		c.walkStep(currentFP, item, &v.Object)
 	}
 }
 
@@ -222,6 +226,7 @@ func (c *Obfuscator) hideParam(currentFP *ast.FunctionOrProcedure, item *ast.Sta
 		return
 	}
 
+	// todo
 }
 
 func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, part *interface{}) {
@@ -276,7 +281,7 @@ func (c *Obfuscator) decodeStringFunc(directive string) string {
 
 func (c *Obfuscator) hideValue(val interface{}, complexity int) ast.Statement {
 	switch val.(type) {
-	case string, bool, float64, int, int32, int64, float32, time.Time, *ast.ExpStatement, ast.MethodStatement:
+	case string, bool, float64, int, int32, int64, float32, time.Time, *ast.ExpStatement, ast.MethodStatement, ast.VarStatement:
 		return c.newTernary(val, int(random(2, complexity)), int(random(0, complexity-1)))
 	default:
 		return val
@@ -776,6 +781,23 @@ func (c *Obfuscator) replaceLoopToGoto(body *ast.Statements, loop *ast.LoopState
 			if (*body)[i] == loop {
 				*body = append(append(append(ast.Statements{}, (*body)[:i]...), newStatements...), (*body)[i+1:]...)
 			}
+		}
+	}
+}
+
+func (c *Obfuscator) replaceAllLoopToGoto(body *ast.Statements) {
+	for i := len(*body) - 1; i >= 0; i-- {
+		var newStatements ast.Statements
+
+		switch v := (*body)[i].(type) {
+		case *ast.LoopStatement:
+			newStatements = c.loopToGoto(v)
+		case ast.LoopStatement:
+			newStatements = c.loopToGoto(&v)
+		}
+
+		if newStatements != nil {
+			*body = append(append(append(ast.Statements{}, (*body)[:i]...), newStatements...), (*body)[i+1:]...)
 		}
 	}
 }

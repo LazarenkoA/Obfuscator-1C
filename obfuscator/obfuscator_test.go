@@ -1030,21 +1030,12 @@ func TestObfuscateLoop(t *testing.T) {
 
 			 КонецФункции`
 
-	obf := NewObfuscatory(context.Background(), Config{
-		RepExpByTernary:  true,
-		RepLoopByGoto:    true,
-		RepExpByEval:     true,
-		HideString:       true,
-		ChangeConditions: true,
-		AppendGarbage:    true,
-	})
+	obf := NewObfuscatory(context.Background(), Config{})
 	obCode, err := obf.Obfuscate(code)
 	assert.NoError(t, err)
 
-	fmt.Println(obCode)
-
 	// должны быть равны
-	assert.Equal(t, true, compareHashes(code, obCode))
+	assert.True(t, compareHashes(code, obCode))
 
 	if t.Failed() {
 		t.Log(obCode)
@@ -1061,7 +1052,7 @@ func TestObfuscateLoop(t *testing.T) {
 	}
 
 	// не должны быть равны
-	assert.Equal(t, false, compareHashes(code, obCode))
+	assert.False(t, compareHashes(code, obCode))
 }
 
 func TestObfuscate2(t *testing.T) {
@@ -1101,10 +1092,12 @@ func TestObfuscate2(t *testing.T) {
 func TestObfuscateExp(t *testing.T) {
 
 	code := `&НаКлиенте
-Процедура СнятьАктивностьНаКлиенте(ТекущаяСтраница, test)
-	
-	Для Каждого Стр Из ?(ТекущаяСтраница = Элементы.СтраницаДополнительныеРеквизиты,СписокРеквизитов,СписокРеквизитовОсновныеРеквизиты) Цикл
-		Стр.Пометка = Ложь;
+Процедура СнятьАктивностьНаКлиенте()
+	СписокРеквизитов = новый массив(2);
+	СписокРеквизитовОсновныеРеквизиты = новый массив();
+	Для Каждого Стр Из ?(1 = 1,СписокРеквизитов,СписокРеквизитовОсновныеРеквизиты) Цикл
+		Пометка = Ложь;
+		сообщить(Пометка);
 	КонецЦикла;
 	
 КонецПроцедуры`
@@ -1116,49 +1109,16 @@ func TestObfuscateExp(t *testing.T) {
 		HideString:       true,
 		ChangeConditions: true,
 		AppendGarbage:    true,
+		CallStackHell:    true,
 	})
 
 	obCode, err := obf.Obfuscate(code)
 	if assert.NoError(t, err) {
-		fmt.Println(obCode)
+		//fmt.Println(obCode)
+		assert.GreaterOrEqual(t, strings.Count(obCode, "Функция"), 3)
+		assert.NotContains(t, obCode, "сообщить(Пометка)")
+		assert.NotContains(t, obCode, "Пометка = Ложь")
 	}
-}
-
-func TestShuffleExp(t *testing.T) {
-	//
-	// 	code := `&НаСервереБезКонтекста
-	// 			Процедура Команда1НаСервере()
-	//
-	// 			а = 1;
-	// 			Сообщить(а);
-	// 			а = а +1;
-	// 			Сообщить(а);
-	// 			а = а +1;
-	// 			Сообщить(а);
-	// 			а = а +1;
-	// 			Сообщить(а);
-	//
-	// Если Истина Тогда
-	// а = а +1;
-	// 			Сообщить(а);
-	// а = а +1;
-	// 			Сообщить(а);
-	// КонецЕсли;
-	// а = а +1;
-	// 			Сообщить(а);
-	// а = а +1;
-	// 			Сообщить(а);
-	//
-	// 			 КонецПроцедуры`
-	//
-	// 	obf := NewObfuscatory(context.Background(), Config{ShuffleExpressions: true})
-	// 	obCode, err := obf.Obfuscate(code)
-	// 	if err != nil {
-	// 		fmt.Println(err)
-	// 		return
-	// 	}
-	//
-	// 	fmt.Println(obCode)
 }
 
 func TestGenCondition(t *testing.T) {

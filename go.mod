@@ -1,6 +1,6 @@
 module github.com/LazarenkoA/Obfuscator-1C
 
-go 1.23.1
+go 1.23.4
 
 toolchain go1.24.1
 
@@ -19,5 +19,6 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/vinser/maze v0.2.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

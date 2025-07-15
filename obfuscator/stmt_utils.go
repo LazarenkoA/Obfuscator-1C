@@ -21,3 +21,9 @@ func (c *Obfuscator) isFP(stm *ast.Statement) bool {
 	_, ok := (*stm).(*ast.FunctionOrProcedure)
 	return ok
 }
+
+func (c *Obfuscator) isLoop(stm ast.Statement) bool {
+	_, ok1 := stm.(*ast.LoopStatement)
+	_, ok2 := stm.(ast.LoopStatement)
+	return ok1 || ok2
+}
