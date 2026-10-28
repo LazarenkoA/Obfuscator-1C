@@ -4,20 +4,21 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/knetic/govaluate"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestObfuscate(t *testing.T) {
-
-	code := `
+	t.Run("test-1", func(t *testing.T) {
+		code := `
 
 // ----------------------------------------------------------
 // This Source Code Form is subject to the terms of the
@@ -987,24 +988,119 @@ func TestObfuscate(t *testing.T) {
 
 `
 
-	obf := NewObfuscatory(context.Background(), Config{
-		RepExpByTernary:  true,
-		RepLoopByGoto:    true,
-		RepExpByEval:     true,
-		HideString:       true,
-		ChangeConditions: true,
-		AppendGarbage:    true,
-	})
-	obCode, err := obf.Obfuscate(code)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+		obf := NewObfuscatory(context.Background(), Config{
+			RepExpByTernary:  true,
+			RepLoopByGoto:    true,
+			RepExpByEval:     true,
+			HideString:       true,
+			ChangeConditions: true,
+			AppendGarbage:    true,
+		})
+		obCode, err := obf.Obfuscate(code)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 
-	os.Mkdir("out_data", os.ModePerm)
-	file, _ := os.Create(filepath.Join("out_data", uuid.NewString()))
-	file.WriteString(obCode)
-	file.Close()
+		os.Mkdir("out_data", os.ModePerm)
+		file, _ := os.Create(filepath.Join("out_data", uuid.NewString()))
+		file.WriteString(obCode)
+		assert.NoError(t, file.Close())
+	})
+	t.Run("test-2", func(t *testing.T) {
+		code := `&НаСервереБезКонтекста
+			Функция Команда1НаСервере()
+
+				 Запрос = Новый Запрос("ВЫБРАТЬ
+						|	ИдентификаторыОбъектовМетаданных.Ссылка,
+						|	ИдентификаторыОбъектовМетаданных.Родитель КАК Группа,
+						|	ИдентификаторыОбъектовМетаданных.Имя,
+						|	ИдентификаторыОбъектовМетаданных.ПолноеИмя,
+						|	ИдентификаторыОбъектовМетаданных.НоваяСсылка
+						|ИЗ
+						|	Справочник.ИдентификаторыОбъектовМетаданных КАК ИдентификаторыОбъектовМетаданных
+						|ИТОГИ
+						|ПО
+						|	Родитель");
+			 КонецФункции`
+
+		obf := NewObfuscatory(context.Background(), Config{
+			RepExpByTernary:  true,
+			RepLoopByGoto:    true,
+			RepExpByEval:     true,
+			HideString:       true,
+			ChangeConditions: true,
+			AppendGarbage:    true,
+		})
+
+		obCode, err := obf.Obfuscate(code)
+		require.NoError(t, err)
+		assert.NotContains(t, obCode, "ВЫБРАТЬ")
+		assert.NotContains(t, obCode, "ИдентификаторыОбъектовМетаданных.Ссылка")
+	})
+	t.Run("test-3", func(t *testing.T) {
+		code := `&НаСервереБезКонтекста
+				&НаКлиенте
+				&ИзменениеИКонтроль("аваав")
+							Функция Команда1НаСервере()
+				
+								Запрос = Новый Запрос;
+				  Запрос.Текст = "ВЫБРАТЬ
+								 |  ""В работе"" КАК Статус"; 
+				  Выборка = Запрос.Выполнить().Выбрать();
+				  Если Выборка.Следующий() Тогда
+					Сообщить(Выборка.Статус);
+				  КонецЕсли;
+			 КонецФункции`
+
+		obf := NewObfuscatory(context.Background(), Config{
+			RepExpByTernary:  true,
+			RepLoopByGoto:    true,
+			RepExpByEval:     true,
+			HideString:       true,
+			ChangeConditions: true,
+			AppendGarbage:    true,
+			LineBreaks:       true,
+		})
+
+		obCode, err := obf.Obfuscate(code)
+		assert.NoError(t, err)
+		fmt.Println(obCode)
+	})
+	t.Run("test-4", func(t *testing.T) {
+		code := `Функция ТексЗапроса()
+	
+	Возврат	"ВЫБРАТЬ ПЕРВЫЕ 100
+	       	|	номенклатура.Наименование КАК Наименование,
+	       	|	номенклатура.Код КАК Код,
+	       	|	ВЫБОР
+	       	|		КОГДА номенклатура.ЭтоГруппа
+	       	|			ТОГДА ""<Это Группа>""
+	       	|		ИНАЧЕ ""<Это НЕ Группа>""
+	       	|	КОНЕЦ КАК ГР,
+	       	|	ВЫБОР
+	       	|		КОГДА номенклатура.Поставщик = ЗНАЧЕНИЕ(Справочник.Контрагенты.ПустаяСсылка)
+	       	|			ТОГДА ""<Поставщик Указан>""
+	       	|		ИНАЧЕ ""<Поставщик не указан>""
+	       	|	КОНЕЦ КАК Пост
+	       	|ИЗ
+	       	|	Справочник.Номенклатура КАК номенклатура";
+
+КонецФункции`
+
+		obf := NewObfuscatory(context.Background(), Config{
+			RepExpByTernary:  true,
+			RepLoopByGoto:    true,
+			RepExpByEval:     true,
+			HideString:       true,
+			ChangeConditions: true,
+			AppendGarbage:    true,
+		})
+
+		obCode, err := obf.Obfuscate(code)
+		require.NoError(t, err)
+		assert.NotContains(t, obCode, "ВЫБРАТЬ")
+	})
 
 }
 
@@ -1053,70 +1149,6 @@ func TestObfuscateLoop(t *testing.T) {
 
 	// не должны быть равны
 	assert.False(t, compareHashes(code, obCode))
-}
-
-func TestObfuscate2(t *testing.T) {
-
-	code := `&НаСервереБезКонтекста
-			Функция Команда1НаСервере()
-
-				 Запрос = Новый Запрос("ВЫБРАТЬ
-						|	ИдентификаторыОбъектовМетаданных.Ссылка,
-						|	ИдентификаторыОбъектовМетаданных.Родитель КАК Группа,
-						|	ИдентификаторыОбъектовМетаданных.Имя,
-						|	ИдентификаторыОбъектовМетаданных.ПолноеИмя,
-						|	ИдентификаторыОбъектовМетаданных.НоваяСсылка
-						|ИЗ
-						|	Справочник.ИдентификаторыОбъектовМетаданных КАК ИдентификаторыОбъектовМетаданных
-						|ИТОГИ
-						|ПО
-						|	Родитель");
-			 КонецФункции`
-
-	obf := NewObfuscatory(context.Background(), Config{
-		RepExpByTernary:  true,
-		RepLoopByGoto:    true,
-		RepExpByEval:     true,
-		HideString:       true,
-		ChangeConditions: true,
-		AppendGarbage:    true,
-	})
-
-	obCode, err := obf.Obfuscate(code)
-	if assert.NoError(t, err) {
-		assert.NotContains(t, obCode, "ВЫБРАТЬ")
-		assert.NotContains(t, obCode, "ИдентификаторыОбъектовМетаданных.Ссылка")
-	}
-}
-
-func TestObfuscate3(t *testing.T) {
-	code := `&НаСервереБезКонтекста
-				&НаКлиенте
-				&ИзменениеИКонтроль("аваав")
-							Функция Команда1НаСервере()
-				
-								Запрос = Новый Запрос;
-				  Запрос.Текст = "ВЫБРАТЬ
-								 |  ""В работе"" КАК Статус"; 
-				  Выборка = Запрос.Выполнить().Выбрать();
-				  Если Выборка.Следующий() Тогда
-					Сообщить(Выборка.Статус);
-				  КонецЕсли;
-			 КонецФункции`
-
-	obf := NewObfuscatory(context.Background(), Config{
-		RepExpByTernary:  true,
-		RepLoopByGoto:    true,
-		RepExpByEval:     true,
-		HideString:       true,
-		ChangeConditions: true,
-		AppendGarbage:    true,
-		LineBreaks:       true,
-	})
-
-	obCode, err := obf.Obfuscate(code)
-	assert.NoError(t, err)
-	fmt.Println(obCode)
 }
 
 func TestObfuscateExp(t *testing.T) {
