@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
+	"log/slog"
 	"math/big"
 	"strconv"
 	"strings"
@@ -16,6 +16,7 @@ import (
 	"github.com/samber/lo"
 )
 
+// Config определяет набор преобразований, которые будут применены к коду.
 type Config struct {
 	// RepExpByTernary заменять выражение тернарными операторами
 	RepExpByTernary bool
@@ -45,33 +46,45 @@ type Config struct {
 	LineBreaks bool
 }
 
+// Obfuscator выполняет обфускацию BSL-кода.
+// Экземпляр не потокобезопасен и рассчитан на многократный вызов Obfuscate
+// из одной горутины (каждый вызов обрабатывает код независимо).
 type Obfuscator struct {
-	ctx                  context.Context
-	conf                 Config
-	a                    *ast.AstNode
-	trueCondition        chan string
-	falseCondition       chan string
+	ctx  context.Context
+	conf Config
+
+	// a - AST исходного (обфусцируемого) модуля
+	a *ast.AstNode
+
+	// decodeStringFuncName кэш имен функций расшифровки строк.
+	// Ключ - директивы функции, значение - сгенерированное имя функции.
 	decodeStringFuncName map[string]string
 }
 
-func init() {
-
-}
-
-func NewObfuscatory(ctx context.Context, conf Config) *Obfuscator {
-	c := &Obfuscator{
+// NewObfuscator создает новый экземпляр обфускатора с указанной конфигурацией.
+// ctx используется для отмены обфускации.
+func NewObfuscator(ctx context.Context, conf Config) *Obfuscator {
+	return &Obfuscator{
 		ctx:                  ctx,
 		conf:                 conf,
-		trueCondition:        make(chan string, 10),
-		falseCondition:       make(chan string, 10),
 		decodeStringFuncName: make(map[string]string),
 	}
-
-	c.genCondition()
-	return c
 }
 
+// NewObfuscatory устаревший псевдоним NewObfuscator, оставлен для совместимости.
+//
+// Deprecated: используйте NewObfuscator.
+func NewObfuscatory(ctx context.Context, conf Config) *Obfuscator {
+	return NewObfuscator(ctx, conf)
+}
+
+// Obfuscate обфусцирует BSL-код и возвращает результат.
+// Если код не содержит процедур и функций, он возвращается без изменений.
 func (c *Obfuscator) Obfuscate(code string) (string, error) {
+	if err := c.ctx.Err(); err != nil {
+		return "", errors.Wrap(err, "obfuscate canceled")
+	}
+
 	c.a = ast.NewAST(code)
 	if err := c.a.Parse(); err != nil {
 		return "", err
@@ -81,15 +94,11 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 		return code, nil
 	}
 
-	//hide := map[string]struct{}{}
-	c.a.ModuleStatement.Walk(func(root *ast.FunctionOrProcedure, parentStm, stm *ast.Statement) {
-		//if _, ok := hide[root.Name+root.Directive]; !ok {
-		//	for i := range root.Params {
-		//		root.Params[i].Name = c.randomString(int(random(5, 50)))
-		//	}
-		//	hide[root.Name+root.Directive] = struct{}{}
-		//}
+	// сбрасываем кэш: имена функций расшифровки действительны только
+	// в пределах текущего AST (функции добавляются в его тело)
+	c.decodeStringFuncName = make(map[string]string)
 
+	c.a.ModuleStatement.Walk(func(root *ast.FunctionOrProcedure, parentStm, stm *ast.Statement) {
 		c.walkStep(root, parentStm, stm)
 	})
 
@@ -98,15 +107,15 @@ func (c *Obfuscator) Obfuscate(code string) (string, error) {
 	return result, nil
 }
 
+// walkStep обрабатывает один узел AST: применяет к нему включенные в Config
+// преобразования (сокрытие строк, тернарные операторы, Вычислить/Выполнить и т.д.).
 func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *ast.Statement) {
 	if currentFP == nil {
-		fmt.Println("! you can obfuscate a procedure or function")
+		slog.Warn("you can obfuscate a procedure or function only")
 		return
 	}
 
 	key := float64(random(10, 100))
-
-	//c.hideParam(currentFP, item)
 
 	switch v := (*item).(type) {
 	case string:
@@ -133,6 +142,7 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 			switch casted := param.(type) {
 			case *ast.ExpStatement, ast.MethodStatement:
 				c.walkStep(currentFP, item, &casted)
+				v.Param.Statements[i] = casted
 			case string:
 				if c.conf.HideString {
 					v.Param.Statements[i] = c.createObfuscateStringStatement(currentFP.Directives, casted, int32(key))
@@ -145,10 +155,7 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 		}
 
 		if c.conf.RepExpByEval && parent == nil {
-			str := c.a.PrintStatementWithConf(v, ast.PrintConf{})
-			if str[len(str)-1] == ';' {
-				str = str[:len(str)-1]
-			}
+			str := trimTrailingSemicolon(c.a.PrintStatementWithConf(v, ast.PrintConf{}))
 
 			*item = ast.MethodStatement{
 				Name: "Выполнить",
@@ -167,10 +174,7 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 		if _, ok := v.Left.(ast.VarStatement); ok && c.conf.RepExpByEval {
 			switch v.Right.(type) {
 			case ast.MethodStatement, ast.CallChainStatement, ast.NewObjectStatement:
-				str := c.a.PrintStatementWithConf(v.Right, ast.PrintConf{})
-				if str[len(str)-1] == ';' {
-					str = str[:len(str)-1]
-				}
+				str := trimTrailingSemicolon(c.a.PrintStatementWithConf(v.Right, ast.PrintConf{}))
 
 				v.Right = ast.MethodStatement{
 					Name: "Вычислить",
@@ -185,10 +189,7 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 		}
 	case ast.CallChainStatement:
 		if c.conf.RepExpByEval && (c.isMethod(parent) || c.isExp(parent) || c.isFP(parent)) {
-			str := c.a.PrintStatementWithConf(v, ast.PrintConf{})
-			if str[len(str)-1] == ';' {
-				str = str[:len(str)-1]
-			}
+			str := trimTrailingSemicolon(c.a.PrintStatementWithConf(v, ast.PrintConf{}))
 
 			*item = ast.MethodStatement{
 				Name: ast.IF(c.isMethod(parent) || c.isExp(parent), "Вычислить", "Выполнить"),
@@ -210,29 +211,35 @@ func (c *Obfuscator) walkStep(currentFP *ast.FunctionOrProcedure, parent, item *
 		switch casted := v.Param.(type) {
 		case *ast.ExpStatement, ast.MethodStatement, ast.ExprStatements:
 			c.walkStep(currentFP, item, &casted)
+			v.Param = casted
 		}
+		*item = v
 	case ast.AssignmentStatement:
-		c.walkStep(currentFP, item, ptr(ast.Statement(v.Expr)))
+		expr := ast.Statement(v.Expr)
+		c.walkStep(currentFP, item, &expr)
+		if casted, ok := expr.(ast.ExprStatements); ok {
+			v.Expr = casted
+		}
 
 		if c.conf.CallStackHell {
 			c.hideBehindCallStack(currentFP.Directives, v.Expr, int(random(3, 7)))
 		}
+		*item = v
 	case ast.NewObjectStatement:
-		c.walkStep(currentFP, item, ptr(ast.Statement(v.Param)))
+		param := ast.Statement(v.Param)
+		c.walkStep(currentFP, item, &param)
+		if casted, ok := param.(ast.ExprStatements); ok {
+			v.Param = casted
+		}
+		*item = v
 	case ast.ItemStatement:
 		c.walkStep(currentFP, item, &v.Object)
+		*item = v
 	}
 }
 
-// hideParam переименовывает входящие параметры
-func (c *Obfuscator) hideParam(currentFP *ast.FunctionOrProcedure, item *ast.Statement) {
-	if len(currentFP.Params) == 0 {
-		return
-	}
-
-	// todo
-}
-
+// obfuscateExpStatement рекурсивно обходит части выражения и применяет
+// преобразования к его правой/левой частям, строкам и параметрам методов.
 func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, part *interface{}) {
 	key := float64(random(10, 100))
 
@@ -265,6 +272,8 @@ func (c *Obfuscator) obfuscateExpStatement(currentPF *ast.FunctionOrProcedure, p
 	}
 }
 
+// createObfuscateStringStatement строит вызов функции расшифровки строк,
+// в которую зашита обфусцированная строка и ключ расшифровки.
 func (c *Obfuscator) createObfuscateStringStatement(directive []*ast.DirectiveStatement, str string, key int32) ast.MethodStatement {
 	return ast.MethodStatement{
 		Name:  c.decodeStringFunc(directive),
@@ -272,28 +281,29 @@ func (c *Obfuscator) createObfuscateStringStatement(directive []*ast.DirectiveSt
 	}
 }
 
+// decodeStringFunc возвращает имя функции расшифровки строк для указанных директив.
+// Для каждого набора директив функция создается один раз и кэшируется.
 func (c *Obfuscator) decodeStringFunc(directives []*ast.DirectiveStatement) string {
-	key := strings.Join(directiveStatementToString(directives), "")
+	key := strings.Join(directiveNames(directives), "")
 	if name, ok := c.decodeStringFuncName[key]; ok {
 		return name
-	} else {
-		name := c.createDecodeStringFunc(directives)
-		c.decodeStringFuncName[key] = name
-
-		return name
-	}
-}
-
-func directiveStatementToString(directives []*ast.DirectiveStatement) []string {
-	result := make([]string, len(directives))
-
-	for i, d := range directives {
-		result[i] = d.Name
 	}
 
-	return result
+	name := c.createDecodeStringFunc(directives)
+	c.decodeStringFuncName[key] = name
+
+	return name
 }
 
+// directiveNames возвращает имена переданных директив.
+func directiveNames(directives []*ast.DirectiveStatement) []string {
+	return lo.Map(directives, func(d *ast.DirectiveStatement, _ int) string {
+		return d.Name
+	})
+}
+
+// hideValue прячет значение за цепочкой вложенных тернарных операторов.
+// Значения неподдерживаемых типов возвращаются как есть.
 func (c *Obfuscator) hideValue(val interface{}, complexity int) ast.Statement {
 	switch val.(type) {
 	case string, bool, float64, int, int32, int64, float32, time.Time, *ast.ExpStatement, ast.MethodStatement, ast.VarStatement:
@@ -303,6 +313,8 @@ func (c *Obfuscator) hideValue(val interface{}, complexity int) ast.Statement {
 	}
 }
 
+// appendGarbage добавляет в тело мусорные выражения, условия и циклы,
+// которые никогда не выполняются. Работает только если включен Config.AppendGarbage.
 func (c *Obfuscator) appendGarbage(body *ast.Statements) {
 	if !c.conf.AppendGarbage {
 		return
@@ -323,7 +335,7 @@ func (c *Obfuscator) appendGarbage(body *ast.Statements) {
 		})
 	}
 	if random(0, 2) == 1 {
-		IF := &ast.IfStatement{Expression: c.convStrExpToExpStatement(<-c.falseCondition)}
+		IF := &ast.IfStatement{Expression: c.convStrExpToExpStatement(c.genCondition(false))}
 
 		if random(0, 2) == 1 {
 			c.appendIfElseBlock(&IF.IfElseBlock, int(random(0, 5)))
@@ -338,7 +350,7 @@ func (c *Obfuscator) appendGarbage(body *ast.Statements) {
 		*body = append(*body, IF)
 	}
 	if random(0, 2) == 1 {
-		loop := &ast.LoopStatement{WhileExpr: c.convStrExpToExpStatement(<-c.falseCondition)}
+		loop := &ast.LoopStatement{WhileExpr: c.convStrExpToExpStatement(c.genCondition(false))}
 		if random(0, 2) == 1 {
 			c.appendGarbage(&loop.Body)
 		}
@@ -348,14 +360,17 @@ func (c *Obfuscator) appendGarbage(body *ast.Statements) {
 	}
 }
 
+// appendIfElseBlock добавляет count веток ИначеЕсли с заведомо ложными условиями.
 func (c *Obfuscator) appendIfElseBlock(ifElseBlock *ast.Statements, count int) {
 	for i := 0; i < count; i++ {
 		*ifElseBlock = append(*ifElseBlock, &ast.IfStatement{
-			Expression: c.convStrExpToExpStatement(<-c.falseCondition),
+			Expression: c.convStrExpToExpStatement(c.genCondition(false)),
 		})
 	}
 }
 
+// appendConditions оборачивает условие в цепочку заведомо истинных условий.
+// Работает только если включен Config.ChangeConditions.
 func (c *Obfuscator) appendConditions(exp ast.Statement) ast.Statement {
 	if !c.conf.ChangeConditions {
 		return exp
@@ -364,6 +379,7 @@ func (c *Obfuscator) appendConditions(exp ast.Statement) ast.Statement {
 	return c.helperAppendConditions(exp, 3)
 }
 
+// helperAppendConditions рекурсивно добавляет к условию depth истинных операндов через И.
 func (c *Obfuscator) helperAppendConditions(exp ast.Statement, depth int) ast.Statement {
 	if depth == 0 {
 		return exp
@@ -372,13 +388,13 @@ func (c *Obfuscator) helperAppendConditions(exp ast.Statement, depth int) ast.St
 	newConditions := &ast.ExpStatement{
 		Operation: ast.OpAnd,
 		Left:      exp,
-		Right:     c.convStrExpToExpStatement(<-c.trueCondition),
+		Right:     c.convStrExpToExpStatement(c.genCondition(true)),
 	}
 
 	if random(0, 2) == 1 {
 		newConditions = &ast.ExpStatement{
 			Operation: ast.OpAnd,
-			Left:      c.convStrExpToExpStatement(<-c.trueCondition),
+			Left:      c.convStrExpToExpStatement(c.genCondition(true)),
 			Right:     exp,
 		}
 	}
@@ -386,16 +402,18 @@ func (c *Obfuscator) helperAppendConditions(exp ast.Statement, depth int) ast.St
 	return c.helperAppendConditions(newConditions, depth-1)
 }
 
+// newTernary строит цепочку вложенных тернарных операторов, на глубине trueStep
+// которой возвращается trueValue, на остальных уровнях - фиктивное значение.
 func (c *Obfuscator) newTernary(trueValue interface{}, depth, trueStep int) ast.TernaryStatement {
 	if depth < trueStep {
 		depth, trueStep = trueStep, depth
 	}
 
-	expression := c.convStrExpToExpStatement(<-c.falseCondition)
+	expression := c.convStrExpToExpStatement(c.genCondition(false))
 	value := c.fakeValue(trueValue)
 
 	if trueStep == 0 {
-		expression = c.convStrExpToExpStatement(<-c.trueCondition)
+		expression = c.convStrExpToExpStatement(c.genCondition(true))
 		value = trueValue
 	}
 
@@ -414,6 +432,8 @@ func (c *Obfuscator) newTernary(trueValue interface{}, depth, trueStep int) ast.
 	}
 }
 
+// fakeValue возвращает фиктивное значение того же типа, что и value.
+// Для неподдерживаемых типов возвращается само значение.
 func (c *Obfuscator) fakeValue(value interface{}) interface{} {
 	switch value.(type) {
 	case float64, float32, int, int32, int64:
@@ -421,7 +441,7 @@ func (c *Obfuscator) fakeValue(value interface{}) interface{} {
 	case string:
 		return c.randomString(10)
 	case *ast.ExpStatement:
-		return c.convStrExpToExpStatement(<-c.falseCondition)
+		return c.convStrExpToExpStatement(c.genCondition(false))
 	case ast.MethodStatement:
 		return c.fakeMethods()
 	default:
@@ -429,8 +449,9 @@ func (c *Obfuscator) fakeValue(value interface{}) interface{} {
 	}
 }
 
+// fakeMethods возвращает вызов случайного платформенного метода со случайными параметрами.
+// Важно, чтобы методы были доступны и на клиенте, и на сервере.
 func (c *Obfuscator) fakeMethods() ast.MethodStatement {
-	// массив платформенных методов (важно что б они были доступны на клиенте и на сервере)
 	pool := []ast.MethodStatement{
 		{
 			Name:  "XMLСтрока",
@@ -465,21 +486,23 @@ func (c *Obfuscator) fakeMethods() ast.MethodStatement {
 	return pool[random(0, len(pool))]
 }
 
-func (c *Obfuscator) randomString(lenStr int) (result string) {
+// randomString генерирует случайную строку из строчных латинских букв заданной длины.
+func (c *Obfuscator) randomString(lenStr int) string {
 	charset := []rune("abcdefghijklmnopqrstuvwxyz")
 	builder := strings.Builder{}
+	builder.Grow(lenStr)
 
-	for builder.Len() < lenStr {
-		builder.WriteString(string(charset[random(0, len(charset))]))
+	for i := 0; i < lenStr; i++ {
+		builder.WriteRune(charset[random(0, len(charset))])
 	}
 
 	return builder.String()
 }
 
+// obfuscateString шифрует строку XOR-ом с ключом key и кодирует результат в base64.
+// Переносы строк в начале строки (символ |) заменяются на пробел,
+// т.к. 1С интерпретирует | первым символом строки как перенос строки.
 func (c *Obfuscator) obfuscateString(str string, key int32) string {
-	var decrypted []rune
-
-	// если | первый в строке 1С его заменит на перенос строк, убераем такой
 	lines := strings.Split(str, "\n")
 	for i, line := range lines {
 		trimmed := strings.TrimLeft(line, " \t")
@@ -488,17 +511,22 @@ func (c *Obfuscator) obfuscateString(str string, key int32) string {
 		}
 	}
 	str = strings.Join(lines, "\n")
+	str = strings.ReplaceAll(str, `""`, `"`) // заменяем двойные кавычки на одинарные
 
-	for _, c := range str {
-		decrypted = append(decrypted, c^key)
+	encrypted := make([]rune, 0, len(str))
+	for _, ch := range str {
+		encrypted = append(encrypted, ch^key)
 	}
 
-	b := []byte(string(decrypted))
+	b := []byte(string(encrypted))
 	dst := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
 	base64.StdEncoding.Encode(dst, b)
+
 	return string(dst)
 }
 
+// createDecodeStringFunc генерирует функцию расшифровки строк (XOR + base64)
+// и добавляет ее в тело модуля. Возвращает имя созданной функции.
 func (c *Obfuscator) createDecodeStringFunc(directives []*ast.DirectiveStatement) string {
 	strParam := c.randomString(10)
 	keyParam := c.randomString(10)
@@ -631,80 +659,56 @@ func (c *Obfuscator) createDecodeStringFunc(directives []*ast.DirectiveStatement
 	}
 
 	c.appendGarbage(&f.Body)
-	c.appendGarbage(&f.Body[2].(*ast.LoopStatement).Body)
 
-	c.replaceLoopToGoto(&f.Body, f.Body[2].(*ast.LoopStatement), true)
+	// декодирующий цикл - третий по счету элемент тела функции
+	loop, ok := f.Body[2].(*ast.LoopStatement)
+	if !ok {
+		slog.Error("decode string func: loop statement expected at body index 2")
+		return ""
+	}
+
+	c.appendGarbage(&loop.Body)
+	c.replaceLoopToGoto(&f.Body, loop, true)
 
 	c.a.ModuleStatement.Body = append(c.a.ModuleStatement.Body, f)
+
 	return funcName
 }
 
-func (c *Obfuscator) genCondition() {
-	expression := func(op string) (string, bool) {
-		left := c.randomMathExp(int(random(2, 7)))
-		right := c.randomMathExp(int(random(2, 7)))
+// genCondition генерирует случайное математическое выражение,
+// которое гарантированно истинно (needTrue == true) или ложно (needTrue == false).
+func (c *Obfuscator) genCondition(needTrue bool) string {
+	for {
+		for _, op := range []string{">", "<"} {
+			left := c.randomMathExp(int(random(2, 7)))
+			right := c.randomMathExp(int(random(2, 7)))
+			expStr := left + op + right
 
-		expression, err := govaluate.NewEvaluableExpression(left + op + right)
-		if err != nil {
-			fmt.Println(errors.Wrap(err, "genCondition error"))
-			return "", false
+			expression, err := govaluate.NewEvaluableExpression(expStr)
+			if err != nil {
+				slog.Error("genCondition error", "err", err)
+				continue
+			}
+
+			result, err := expression.Evaluate(nil)
+			if err != nil {
+				slog.Error("genCondition evaluate error", "err", err)
+				continue
+			}
+
+			if v, ok := result.(bool); ok && v == needTrue {
+				return expStr
+			}
 		}
-
-		result, _ := expression.Evaluate(nil)
-		if v, ok := result.(bool); v && ok {
-			return left + op + right, true
-		} else if ok && !v {
-			return left + op + right, false
-		}
-
-		return "", false
 	}
-
-	// true
-	go func() {
-		defer close(c.trueCondition)
-
-		for {
-			select {
-			case <-c.ctx.Done():
-				return
-			default:
-				if exp, ok := expression(">"); ok {
-					c.trueCondition <- exp
-				}
-				if exp, ok := expression("<"); ok {
-					c.trueCondition <- exp
-				}
-			}
-		}
-	}()
-
-	// false
-	go func() {
-		defer close(c.falseCondition)
-
-		for {
-			select {
-			case <-c.ctx.Done():
-				return
-			default:
-				if exp, ok := expression(">"); !ok && exp != "" {
-					c.falseCondition <- exp
-				}
-				if exp, ok := expression("<"); !ok && exp != "" {
-					c.falseCondition <- exp
-				}
-			}
-		}
-	}()
 }
 
-func (c *Obfuscator) randomMathExp(lenExp int) (result string) {
-	builder := strings.Builder{}
-	defer func() { result = builder.String() }()
-
+// randomMathExp генерирует случайное математическое выражение из lenExp чисел,
+// соединенных случайными арифметическими операциями.
+func (c *Obfuscator) randomMathExp(lenExp int) string {
 	operations := []string{"-", "+", "/", "*"}
 
+	builder := strings.Builder{}
 	for i := 0; i < lenExp; i++ {
 		builder.WriteString(strconv.Itoa(int(random(1, 1000))))
 		if i < lenExp-1 {
@@ -712,19 +716,24 @@ func (c *Obfuscator) randomMathExp(lenExp int) (result string) {
 		}
 	}
 
-	return
+	return builder.String()
 }
 
+// convStrExpToExpStatement парсит строку с выражением в ast.ExpStatement.
+// В случае ошибки парсинга возвращает пустое выражение.
 func (c *Obfuscator) convStrExpToExpStatement(str string) *ast.ExpStatement {
 	astObj := ast.NewAST(str)
 	if err := astObj.Parse(); err != nil {
-		fmt.Println(errors.Wrap(err, "ast parse error"))
+		slog.Error("ast parse error", "err", err)
 		return new(ast.ExpStatement)
 	}
 
 	return astObj.ModuleStatement.Body[0].(*ast.ExpStatement)
 }
 
+// loopToGoto преобразует цикл в эквивалентный набор операторов Перейти.
+// Прервать заменяется на переход в конец цикла, Продолжить - в начало.
+// Если цикл преобразовать нельзя, он возвращается без изменений.
 func (c *Obfuscator) loopToGoto(loop *ast.LoopStatement) ast.Statements {
 	start := &ast.GoToLabelStatement{Name: c.randomString(5)}
 	end := &ast.GoToLabelStatement{Name: c.randomString(5)}
@@ -749,7 +758,8 @@ func (c *Obfuscator) loopToGoto(loop *ast.LoopStatement) ast.Statements {
 			}
 		})
 
-		newBody = append(append(newBody, loop.Body...), ast.GoToStatement{Label: start}, end)
+		newBody = append(newBody, loop.Body...)
+		newBody = append(newBody, ast.GoToStatement{Label: start}, end)
 		return newBody
 	}
 
@@ -773,7 +783,8 @@ func (c *Obfuscator) loopToGoto(loop *ast.LoopStatement) ast.Statements {
 			},
 		}
 
-		newBody = append(append(newBody, loop.Body...),
+		newBody = append(newBody, loop.Body...)
+		newBody = append(newBody,
 			&ast.ExpStatement{
 				Operation: ast.OpEq,
 				Left:      exp.Left,
@@ -791,6 +802,8 @@ func (c *Obfuscator) loopToGoto(loop *ast.LoopStatement) ast.Statements {
 	return ast.Statements{loop}
 }
 
+// invertExp инвертирует выражение. Для типов без поддержки инверсии
+// выражение возвращается как есть.
 func (c *Obfuscator) invertExp(exp ast.Statement) ast.Statement {
 	switch v := exp.(type) {
 	case ast.INot:
@@ -802,17 +815,22 @@ func (c *Obfuscator) invertExp(exp ast.Statement) ast.Statement {
 	}
 }
 
+// replaceLoopToGoto заменяет цикл loop в теле body на набор операторов Перейти.
+// force позволяет выполнить замену независимо от Config.RepLoopByGoto.
 func (c *Obfuscator) replaceLoopToGoto(body *ast.Statements, loop *ast.LoopStatement, force bool) {
-	if c.conf.RepLoopByGoto || force {
-		newStatements := c.loopToGoto(loop)
-		for i := len(*body) - 1; i >= 0; i-- {
-			if (*body)[i] == loop {
-				*body = append(append(append(ast.Statements{}, (*body)[:i]...), newStatements...), (*body)[i+1:]...)
-			}
+	if !c.conf.RepLoopByGoto && !force {
+		return
+	}
+
+	newStatements := c.loopToGoto(loop)
+	for i := len(*body) - 1; i >= 0; i-- {
+		if (*body)[i] == loop {
+			*body = append(append(append(ast.Statements{}, (*body)[:i]...), newStatements...), (*body)[i+1:]...)
 		}
 	}
 }
 
+// replaceAllLoopToGoto заменяет все циклы в теле body на наборы операторов Перейти.
 func (c *Obfuscator) replaceAllLoopToGoto(body *ast.Statements) {
 	for i := len(*body) - 1; i >= 0; i-- {
 		var newStatements ast.Statements
@@ -830,11 +848,9 @@ func (c *Obfuscator) replaceAllLoopToGoto(body *ast.Statements) {
 	}
 }
 
-func (c *Obfuscator) shuffleExpressions(body ast.Statements) []ast.Statement {
-	// if !c.conf.ShuffleExpressions {
-	// 	return body
-	// }
-
+// shuffleExpressions перемешивает порядок обхода выражений в теле: каждое выражение
+// оборачивается в пару метка/переход, но итоговый порядок выполнения сохраняется.
+func (c *Obfuscator) shuffleExpressions(body ast.Statements) ast.Statements {
 	orderMap := make(map[int]string, len(body))
 	expr := make(map[int]ast.Statement, len(body))
 	for i, item := range body {
@@ -858,23 +874,24 @@ func (c *Obfuscator) shuffleExpressions(body ast.Statements) []ast.Statement {
 	return newBody
 }
 
-// [min, max)
-func random(min, max int) int64 {
-	max -= min
-	if max <= 0 {
-		return 0
-	}
-
-	randomNumber, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
-	if err != nil {
-		fmt.Println(errors.Wrap(err, "rand error"))
-		return 0
-	}
-
-	return randomNumber.Int64() + int64(min)
+// trimTrailingSemicolon убирает завершающую точку с запятой, т.к. выражение
+// будет встроено внутрь другого выражения.
+func trimTrailingSemicolon(str string) string {
+	return strings.TrimSuffix(str, ";")
 }
 
-func isString(item ast.Statement) bool {
-	_, ok := item.(string)
-	return ok
+// random возвращает случайное число из диапазона [min, max).
+// Для пустого диапазона (max <= min) возвращает min.
+func random(min, max int) int64 {
+	if max <= min {
+		return int64(min)
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max-min)))
+	if err != nil {
+		slog.Error("rand error", "err", err)
+		return int64(min)
+	}
+
+	return n.Int64() + int64(min)
 }

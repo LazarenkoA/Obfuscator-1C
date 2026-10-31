@@ -3,17 +3,18 @@ package obfuscator
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/LazarenkoA/1c-language-parser/ast"
+	"github.com/google/uuid"
 	"github.com/knetic/govaluate"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestObfuscate(t *testing.T) {
@@ -997,15 +998,15 @@ func TestObfuscate(t *testing.T) {
 			AppendGarbage:    true,
 		})
 		obCode, err := obf.Obfuscate(code)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
+		require.NoError(t, err)
 
-		os.Mkdir("out_data", os.ModePerm)
-		file, _ := os.Create(filepath.Join("out_data", uuid.NewString()))
-		file.WriteString(obCode)
-		assert.NoError(t, file.Close())
+		require.NoError(t, os.MkdirAll("out_data", os.ModePerm))
+		file, err := os.Create(filepath.Join("out_data", uuid.NewString()+".bsl"))
+		require.NoError(t, err)
+
+		_, err = file.WriteString(obCode)
+		require.NoError(t, err)
+		require.NoError(t, file.Close())
 	})
 	t.Run("test-2", func(t *testing.T) {
 		code := `&НаСервереБезКонтекста
@@ -1037,6 +1038,9 @@ func TestObfuscate(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotContains(t, obCode, "ВЫБРАТЬ")
 		assert.NotContains(t, obCode, "ИдентификаторыОбъектовМетаданных.Ссылка")
+
+		// результат обфускации должен парситься как валидный BSL
+		assert.NoError(t, ast.NewAST(obCode).Parse())
 	})
 	t.Run("test-3", func(t *testing.T) {
 		code := `&НаСервереБезКонтекста
@@ -1068,25 +1072,33 @@ func TestObfuscate(t *testing.T) {
 		fmt.Println(obCode)
 	})
 	t.Run("test-4", func(t *testing.T) {
-		code := `Функция ТексЗапроса()
+		code := `&НаСервере
+Процедура Команда1НаСервере()
+	 	//{{КОНСТРУКТОР_ЗАПРОСА_С_ОБРАБОТКОЙ_РЕЗУЛЬТАТА
+	// Данный фрагмент построен конструктором.
+	// При повторном использовании конструктора, внесенные вручную изменения будут утеряны!!!
 	
-	Возврат	"ВЫБРАТЬ ПЕРВЫЕ 100
-	       	|	номенклатура.Наименование КАК Наименование,
-	       	|	номенклатура.Код КАК Код,
-	       	|	ВЫБОР
-	       	|		КОГДА номенклатура.ЭтоГруппа
-	       	|			ТОГДА ""<Это Группа>""
-	       	|		ИНАЧЕ ""<Это НЕ Группа>""
-	       	|	КОНЕЦ КАК ГР,
-	       	|	ВЫБОР
-	       	|		КОГДА номенклатура.Поставщик = ЗНАЧЕНИЕ(Справочник.Контрагенты.ПустаяСсылка)
-	       	|			ТОГДА ""<Поставщик Указан>""
-	       	|		ИНАЧЕ ""<Поставщик не указан>""
-	       	|	КОНЕЦ КАК Пост
-	       	|ИЗ
-	       	|	Справочник.Номенклатура КАК номенклатура";
+	Запрос = Новый Запрос;
+	Запрос.Текст = 
+		"ВЫБРАТЬ
+		|	Картинки.Ссылка КАК Ссылка,
+		|  ""<Это Группа>""  как высывс
+		|ИЗ
+		|	Справочник.Картинки КАК Картинки";
+	
+	РезультатЗапроса = Запрос.Выполнить();
+	
+	ВыборкаДетальныеЗаписи = РезультатЗапроса.Выбрать();
+	
+	Пока ВыборкаДетальныеЗаписи.Следующий() Цикл
+		// Вставить обработку выборки ВыборкаДетальныеЗаписи
+	КонецЦикла;
+	
+	//}}КОНСТРУКТОР_ЗАПРОСА_С_ОБРАБОТКОЙ_РЕЗУЛЬТАТА
 
-КонецФункции`
+	выполнить("сообщить(""сывыв"");");
+КонецПроцедуры
+`
 
 		obf := NewObfuscatory(context.Background(), Config{
 			RepExpByTernary:  true,
@@ -1100,6 +1112,11 @@ func TestObfuscate(t *testing.T) {
 		obCode, err := obf.Obfuscate(code)
 		require.NoError(t, err)
 		assert.NotContains(t, obCode, "ВЫБРАТЬ")
+
+		fmt.Println(obCode)
+
+		// результат обфускации должен парситься как валидный BSL
+		assert.NoError(t, ast.NewAST(obCode).Parse())
 	})
 
 }
@@ -1184,24 +1201,35 @@ func TestObfuscateExp(t *testing.T) {
 }
 
 func TestGenCondition(t *testing.T) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Millisecond*500)
-	obf := NewObfuscatory(ctx, Config{})
+	obf := NewObfuscator(context.Background(), Config{})
 
-	for c := range obf.falseCondition {
-		expression, _ := govaluate.NewEvaluableExpression(c)
-		result, _ := expression.Evaluate(nil)
-		if v, ok := result.(bool); v && ok {
-			t.Fatal(c, "expression must be false")
-		}
-	}
+	t.Run("true", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			exp := obf.genCondition(true)
 
-	for c := range obf.trueCondition {
-		expression, _ := govaluate.NewEvaluableExpression(c)
-		result, _ := expression.Evaluate(nil)
-		if v, ok := result.(bool); v && !ok {
-			t.Fatal(c, "expression must be true")
+			expression, err := govaluate.NewEvaluableExpression(exp)
+			require.NoError(t, err)
+
+			result, err := expression.Evaluate(nil)
+			require.NoError(t, err)
+
+			require.Equal(t, true, result, "expression must be true: %s", exp)
 		}
-	}
+	})
+
+	t.Run("false", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			exp := obf.genCondition(false)
+
+			expression, err := govaluate.NewEvaluableExpression(exp)
+			require.NoError(t, err)
+
+			result, err := expression.Evaluate(nil)
+			require.NoError(t, err)
+
+			require.Equal(t, false, result, "expression must be false: %s", exp)
+		}
+	})
 }
 
 func compareHashes(str1, str2 string) bool {
@@ -1217,4 +1245,136 @@ func compareHashes(str1, str2 string) bool {
 	hash2 := sha256.Sum256([]byte(strings.ToLower(str2)))
 
 	return hash1 == hash2
+}
+
+// TestObfuscateResultIsValidBSL проверяет, что результат обфускации со всеми
+// включенными преобразованиями остается валидным BSL-кодом.
+func TestObfuscateResultIsValidBSL(t *testing.T) {
+	code := `&НаСервереБезКонтекста
+Функция Команда1НаСервере()
+	б = 0;
+	Пока б < 10 Цикл
+		б = б + 1;
+	КонецЦикла;
+	Если б = 10 Тогда
+		Сообщить("готово");
+	Иначе
+		Сообщить("не готово");
+	КонецЕсли;
+	Возврат б;
+КонецФункции`
+
+	t.Run("all options on", func(t *testing.T) {
+		obf := NewObfuscator(context.Background(), Config{
+			RepExpByTernary:  true,
+			RepLoopByGoto:    true,
+			RepExpByEval:     true,
+			HideString:       true,
+			ChangeConditions: true,
+			AppendGarbage:    true,
+			CallStackHell:    true,
+			LineBreaks:       true,
+		})
+
+		obCode, err := obf.Obfuscate(code)
+		require.NoError(t, err)
+		assert.NotContains(t, obCode, "готово")
+
+		// результат обфускации должен парситься как валидный BSL
+		assert.NoError(t, ast.NewAST(obCode).Parse())
+	})
+
+	t.Run("all options off returns same code", func(t *testing.T) {
+		obf := NewObfuscator(context.Background(), Config{})
+
+		obCode, err := obf.Obfuscate(code)
+		require.NoError(t, err)
+		assert.True(t, compareHashes(code, obCode))
+	})
+
+	t.Run("empty module returns code as is", func(t *testing.T) {
+		obf := NewObfuscator(context.Background(), Config{AppendGarbage: true})
+
+		obCode, err := obf.Obfuscate("")
+		require.NoError(t, err)
+		assert.Empty(t, obCode)
+	})
+}
+
+// TestObfuscatorCtxCanceled проверяет, что отмененный контекст прерывает обфускацию с ошибкой.
+func TestObfuscatorCtxCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	obf := NewObfuscator(ctx, Config{})
+	_, err := obf.Obfuscate("Процедура А() КонецПроцедуры")
+	require.Error(t, err)
+}
+
+// TestObfuscateStringRoundtrip проверяет, что obfuscateString обратим:
+// строку можно восстановить, сняв base64 и повторив XOR с тем же ключом.
+// Символ | в начале строки намеренно заменяется на пробел (особенность 1С),
+// поэтому ожидаемый результат сначала нормализуется так же, как в obfuscateString.
+func TestObfuscateStringRoundtrip(t *testing.T) {
+	obf := NewObfuscator(context.Background(), Config{})
+	src := "Привет, мир!\n	|Продолжение строки \"в кавычках\""
+
+	// воспроизводим нормализацию | из obfuscateString
+	var expected strings.Builder
+	for i, line := range strings.Split(src, "\n") {
+		if i > 0 {
+			expected.WriteString("\n")
+		}
+		trimmed := strings.TrimLeft(line, " 	")
+		if strings.HasPrefix(trimmed, "|") {
+			expected.WriteString(line[:len(line)-len(trimmed)] + " " + trimmed[1:])
+		} else {
+			expected.WriteString(line)
+		}
+	}
+
+	for _, key := range []int32{1, 10, 67, 100} {
+		t.Run(fmt.Sprintf("key-%d", key), func(t *testing.T) {
+			encoded := obf.obfuscateString(src, key)
+
+			raw, err := base64.StdEncoding.DecodeString(encoded)
+			require.NoError(t, err)
+
+			var decoded []rune
+			for _, ch := range string(raw) {
+				decoded = append(decoded, ch^key)
+			}
+
+			assert.Equal(t, expected.String(), string(decoded))
+		})
+	}
+}
+
+func TestRandom(t *testing.T) {
+	t.Run("value in range", func(t *testing.T) {
+		for i := 0; i < 1000; i++ {
+			v := random(5, 10)
+			require.GreaterOrEqual(t, v, int64(5))
+			require.Less(t, v, int64(10))
+		}
+	})
+
+	t.Run("empty range returns min", func(t *testing.T) {
+		assert.Equal(t, int64(7), random(7, 7))
+		assert.Equal(t, int64(7), random(7, 3))
+	})
+}
+
+func TestTrimTrailingSemicolon(t *testing.T) {
+	t.Run("with semicolon", func(t *testing.T) {
+		assert.Equal(t, "а = 1", trimTrailingSemicolon("а = 1;"))
+	})
+
+	t.Run("without semicolon", func(t *testing.T) {
+		assert.Equal(t, "а = 1", trimTrailingSemicolon("а = 1"))
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		assert.Empty(t, trimTrailingSemicolon(""))
+	})
 }

@@ -1,10 +1,14 @@
 package obfuscator
 
 import (
-	"github.com/LazarenkoA/1c-language-parser/ast"
 	"time"
+
+	"github.com/LazarenkoA/1c-language-parser/ast"
 )
 
+// hideBehindCallStack прячет константу val за цепочкой вложенных фейковых функций:
+// на месте значения остается вызов функции, которая сама вызывает следующую и т.д.
+// deep определяет глубину цепочки.
 func (c *Obfuscator) hideBehindCallStack(directives []*ast.DirectiveStatement, val ast.ExprStatements, deep int) {
 	if len(val.Statements) == 0 || len(val.Statements) > 1 {
 		return
@@ -19,6 +23,8 @@ func (c *Obfuscator) hideBehindCallStack(directives []*ast.DirectiveStatement, v
 	}
 }
 
+// wrapFunc оборачивает вызов функции callFuncName в еще одну фейковую функцию.
+// deep определяет, сколько уровней оберток создать.
 func (c *Obfuscator) wrapFunc(directives []*ast.DirectiveStatement, callFuncName string, deep int) {
 	if deep == 0 {
 		return
@@ -28,6 +34,9 @@ func (c *Obfuscator) wrapFunc(directives []*ast.DirectiveStatement, callFuncName
 	c.wrapFunc(directives, funcName, deep-1)
 }
 
+// createFakeFunc создает функцию, возвращающую value, обрамленную случайным
+// количеством мусорных выражений, и добавляет ее в тело модуля.
+// Возвращает имя созданной функции.
 func (c *Obfuscator) createFakeFunc(directives []*ast.DirectiveStatement, value ast.Statement) string {
 	funcName := c.randomString(30)
 
@@ -39,23 +48,18 @@ func (c *Obfuscator) createFakeFunc(directives []*ast.DirectiveStatement, value 
 		Directives: directives,
 	}
 
-	if random(0, 2) == 1 {
-		c.appendGarbage(&f.Body)
-	}
-	if random(0, 2) == 1 {
-		c.appendGarbage(&f.Body)
-	}
-	if random(0, 2) == 1 {
-		c.appendGarbage(&f.Body)
+	for i := 0; i < 3; i++ {
+		if random(0, 2) == 1 {
+			c.appendGarbage(&f.Body)
+		}
 	}
 
 	f.Body = append(f.Body, &ast.ReturnStatement{Param: value})
 
-	if random(0, 2) == 1 {
-		c.appendGarbage(&f.Body)
-	}
-	if random(0, 2) == 1 {
-		c.appendGarbage(&f.Body)
+	for i := 0; i < 2; i++ {
+		if random(0, 2) == 1 {
+			c.appendGarbage(&f.Body)
+		}
 	}
 
 	c.replaceAllLoopToGoto(&f.Body)
